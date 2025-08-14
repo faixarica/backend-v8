@@ -1,89 +1,42 @@
-from flask import Flask, request, jsonify
-from datetime import datetime, timedelta
-import os
-import stripe
-from dotenv import load_dotenv
-from stripe_webhook import carregar_planos
+from sqlalchemy import text
+from db import Session
 
-from database import (
-    update_invoice_status_by_stripe_id,
-    update_invoice_payment_flag_by_stripe_id,
-    update_client_plans_status,
-    update_plan_dates,
-    insert_client_plan)
+def _activate_plan(s, client_id: int, plan_id: str, amount: int = 0, source: str = "stripe"):
+    # Idempotência simples: evita duplicar plano ativo
+    exists = s.execute(text("""
+        SELECT 1 FROM client_plans
+         WHERE client_id=:cid AND plan_id=:pid AND status='A'
+         LIMIT 1
+    """), {"cid": client_id, "pid": plan_id}).fetchone()
+    if not exists:
+        s.execute(text("""
+            INSERT INTO client_plans (client_id, plan_id, start_date, expiration_date, status)
+            VALUES (:cid, :pid, CURRENT_DATE, CURRENT_DATE + INTERVAL '30 days', 'A')
+        """), {"cid": client_id, "pid": plan_id})
 
-# Teste o caminho absoluto do arquivo atual
-print(f"📂 Caminho do arquivo atual: {os.path.abspath(__file__)}")
+    s.execute(text("""
+        INSERT INTO financeiro (client_id, plan_id, amount, status, created_at, source)
+        VALUES (:cid, :pid, :amt, 'Pago', NOW(), :src)
+    """), {"cid": client_id, "pid": plan_id, "amt": amount, "src": source})
 
-# Agora força o caminho completo do .env, independente de onde está o script:
-env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '.env')
+    s.execute(text("UPDATE usuarios SET status='ativo' WHERE id=:cid"), {"cid": client_id})
 
-print(f"📄 Caminho final do .env: {env_path}")
+def handle_stripe_event(event: dict):
+    etype = event.get("type")
+    data = event.get("data", {}).get("object", {})
 
-# Carrega o .env do caminho exato
-load_dotenv(dotenv_path=env_path)
+    if etype == "checkout.session.completed":
+        client_id = int(data["metadata"]["client_id"])
+        plan_id = data["metadata"]["plan_id"]
 
-# Verifica o carregamento
-print(f"🔧 Segredo carregado 1: {os.getenv('STRIPE_ENDPOINT_SECRET')}")
+        s = Session()
+        try:
+            _activate_plan(s, client_id, plan_id, amount=0, source="stripe_checkout")
+            s.commit()
+        except Exception:
+            s.rollback()
+            raise
+        finally:
+            s.close()
 
-# Configuração
-app = Flask(__name__)
-#load_dotenv()
-
-
-stripe.api_key = os.getenv("STRIPE_API_KEY")
-endpoint_secret = os.getenv("STRIPE_ENDPOINT_SECRET")
-
-print(f"🔧 Segredo carregado 2 : {os.getenv('STRIPE_ENDPOINT_SECRET')}")
-
-
-@app.route("/api/stripe-webhook", methods=["POST"])
-def stripe_webhook():
-    print("✅ Webhook recebeu POST!")
-
-    payload = request.data
-    sig_header = request.headers.get("stripe-signature")
-
-    print(f"🔧 Payload recebido: {payload}")
-
-    try:
-        event = stripe.Webhook.construct_event(payload, sig_header, endpoint_secret)
-    except stripe.error.SignatureVerificationError as e:
-        return jsonify({"error": "Assinatura inválida"}), 400
-
-    if event["type"] == "checkout.session.completed":
-        session = event["data"]["object"]  # 👈 movido para cima
-
-        print("📌 DEBUG WEBHOOK")
-        print(f"🔑 Session ID: {session.get('id')}")
-        print(f"🧾 Payment Intent: {session.get('payment_intent')}")
-        print(f"📎 Metadata: {session.get('metadata')}")
-
-        metadata = session.get("metadata", {})
-        session_id = session.get("id")
-
-        client_id = metadata.get("client_id")
-        plan_id = metadata.get("plan_id")
-
-        if not client_id or not plan_id:
-            return jsonify({"error": "Metadados ausentes"}), 400
-
-        client_id = int(client_id)
-        plan_id = int(plan_id)
-
-        # Atualizações
-        update_invoice_status_by_stripe_id(session_id, status="Pago")
-        update_invoice_payment_flag_by_stripe_id(session_id, flag="S")
-
-        start_date = datetime.today().date()
-        expiration_date = start_date + timedelta(days=30)
-
-        update_client_plan_status(client_id, status="Ativo")
-        update_client_plans_status(client_id, plan_id, status="A")
-        update_plan_dates(client_id, plan_id, start_date, expiration_date)
-        insert_client_plan(client_id, plan_id, start_date, expiration_date)
-
-    return jsonify({"status": "success"}), 200
-
-if __name__ == "__main__":
-    app.run(port=5001)
+    # Você pode lidar com "invoice.payment_succeeded", "customer.subscription.updated", etc.
