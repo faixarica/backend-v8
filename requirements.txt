@@ -5,4 +5,4 @@ python-dotenv
 bcrypt
 gunicorn
 flask==2.3.3
-stripe==11.18.0
+stripe
