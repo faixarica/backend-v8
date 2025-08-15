@@ -14,26 +14,21 @@ const allowedOrigins = [
   "http://localhost:3000"
 ];
 
-//app.use(cors({
- // origin: function (origin, callback) {
-//    if (!origin || allowedOrigins.includes(origin)) {
-//      callback(null, true);
-//    } else {
-//      console.log("CORS bloqueado para origem:", origin);
-//      callback(new Error("Not allowed by CORS"));/
-//    }
-//  },
-//  methods: "GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS",
-//  allowedHeaders: ["Content-Type", "Authorization"],
-//  credentials: true
-//}));
 app.use(cors({
-  origin: "*",
-  methods: "GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS",
-  allowedHeaders: ["Content-Type", "Authorization"]
+origin: function (origin, callback) {
+   if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+     console.log("CORS bloqueado para origem:", origin);
+      callback(new Error("Not allowed by CORS"));/
+    }
+ },
+methods: "GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS",
+allowedHeaders: ["Content-Type", "Authorization"],
+ credentials: true
 }));
-app.options("*", cors());
 
+app.options("*", cors());
 
 // Habilita resposta ao preflight
 app.options("*", cors());
