@@ -7,25 +7,32 @@ const app = express();
 // Configuração de CORS para aceitar chamadas do seu site e localmente
 // CORS — permitir tanto com www quanto sem
 // CORS — permitir tanto com www quanto sem
+
 const allowedOrigins = [
   "https://faixabet.com.br",
   "https://www.faixabet.com.br",
   "http://localhost:3000"
 ];
 
+//app.use(cors({
+ // origin: function (origin, callback) {
+//    if (!origin || allowedOrigins.includes(origin)) {
+//      callback(null, true);
+//    } else {
+//      console.log("CORS bloqueado para origem:", origin);
+//      callback(new Error("Not allowed by CORS"));/
+//    }
+//  },
+//  methods: "GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS",
+//  allowedHeaders: ["Content-Type", "Authorization"],
+//  credentials: true
+//}));
 app.use(cors({
-  origin: function (origin, callback) {
-    if (!origin || allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else {
-      console.log("CORS bloqueado para origem:", origin);
-      callback(new Error("Not allowed by CORS"));
-    }
-  },
+  origin: "*",
   methods: "GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS",
-  allowedHeaders: ["Content-Type", "Authorization"],
-  credentials: true
+  allowedHeaders: ["Content-Type", "Authorization"]
 }));
+app.options("*", cors());
 
 
 // Habilita resposta ao preflight
