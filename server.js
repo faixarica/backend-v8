@@ -5,26 +5,25 @@ const stripe = require("stripe")("sk_test_51Re2DXIGnSq3aVjyz6bGfgnrCIdej1KFBgimh
 const app = express();
 
 // Configuração de CORS para aceitar chamadas do seu site e localmente
+// CORS — permitir tanto com www quanto sem
+// CORS — permitir tanto com www quanto sem
 const allowedOrigins = [
+  "https://faixabet.com.br",
   "https://www.faixabet.com.br",
   "http://localhost:3000"
 ];
 
 app.use(cors({
   origin: function (origin, callback) {
-    const allowed = [
-      "https://www.faixabet.com.br",
-      "https://faixabet.com.br",
-      "http://localhost:3000"
-    ];
-    if (!origin || allowed.includes(origin)) {
+    if (!origin || allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
+      console.log("CORS bloqueado para origem:", origin);
       callback(new Error("Not allowed by CORS"));
     }
   },
   methods: "GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS",
-  allowedHeaders: "Content-Type,Authorization",
+  allowedHeaders: ["Content-Type", "Authorization"],
   credentials: true
 }));
 
