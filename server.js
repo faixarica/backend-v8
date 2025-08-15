@@ -136,6 +136,5 @@ app.post("/api/create-payment-intent", async (req, res) => {
         res.status(500).json({ error: err.message });
     }
 });
-
 const PORT = process.env.PORT || 3000; // Usa a porta do Render ou 3000 como fallback
 app.listen(PORT, () => console.log(`Servidor rodando na porta ${PORT}`));
