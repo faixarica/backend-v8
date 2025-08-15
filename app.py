@@ -70,7 +70,6 @@ def register_user():
         return jsonify({"error": "Erro ao registrar usuário"}), 500
     finally:
         s.close()
-
 # ---- Plano Free
 @app.post("/api/subscribe-free")
 def subscribe_free():
@@ -120,7 +119,8 @@ def subscribe_free():
 def create_checkout_session():
     data = request.get_json(force=True)
     client_id = data.get("client_id")
-    plan = data.get("plan")
+    # Forçar plano em minúsculo antes de buscar no PRICE_MAP
+    plan = data.get("plan", "").strip().lower()
 
     if plan not in PRICE_MAP or not PRICE_MAP[plan]:
         return jsonify({"error": "Plano inválido ou PRICE_ID ausente"}), 400
