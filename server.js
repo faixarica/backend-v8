@@ -99,7 +99,7 @@ app.post("/api/create-checkout-session", async (req, res) => {
             }],
             mode: 'payment',
             success_url: 'https://faixabet.com.br/success', // Sem espaços
-            cancel_url: 'https://faixabet.com.br/cancel',   // Sem espaços
+            cancel_url:  'https://faixabet.com.br/cancel',   // Sem espaços
             // success_url: 'https://faixab7.streamlit.app/', // Ou uma página de sucesso específica no seu site
             // cancel_url: 'https://seu-dominio.com/#planos', // URL da seção de planos do seu site 
             metadata: {
