@@ -41,25 +41,26 @@ app.post("/api/register", async (req, res) => {
 });
 
 // Endpoint para ativar plano gratuito
-app.post("/api/subscribe-free", async (req, res) => {
-    const { client_id, plan } = req.body;
-    
+app.post("/api/process-free-plan", async (req, res) => {
+    const { client_id, plan, email } = req.body; // Adiciona email
+
     if (plan !== 'free') {
         return res.status(400).json({ error: "Plano inválido para este endpoint." });
     }
-    
+
     // Encontrar usuário e atualizar plano (simulação)
-    const user = users.find(u => u.client_id == client_id);
-    if (!user) {
+    const userIndex = users.findIndex(u => u.client_id == client_id);
+    if (userIndex === -1) {
         return res.status(404).json({ error: "Usuário não encontrado." });
     }
-    
-    user.plan = 'free';
-    user.subscribed_at = new Date();
-    
-    res.json({ message: "Plano Free ativado com sucesso!" });
-});
+    // Simular gravação nas tabelas conforme o fluxo técnico
+    // client_plans e financeiro (simulação)
+    users[userIndex].plan = 'free';
+    users[userIndex].subscribed_at = new Date();
+    // Aqui você adicionaria a lógica para salvar em 'client_plans' e 'financeiro'
 
+    res.json({ message: "Plano Free processado e ativado com sucesso!" });
+});
 // Endpoint para criar sessão de checkout do Stripe
 app.post("/api/create-checkout-session", async (req, res) => {
     const { client_id, plan } = req.body;
@@ -97,8 +98,10 @@ app.post("/api/create-checkout-session", async (req, res) => {
                 quantity: 1,
             }],
             mode: 'payment',
-            success_url: 'https://seusite.com/success',
-            cancel_url: 'https://seusite.com/cancel',
+            success_url: 'https://faixabet.com.br/success', // Sem espaços
+            cancel_url: 'https://faixabet.com.br/cancel',   // Sem espaços
+            // success_url: 'https://faixab7.streamlit.app/', // Ou uma página de sucesso específica no seu site
+            // cancel_url: 'https://seu-dominio.com/#planos', // URL da seção de planos do seu site 
             metadata: {
                 client_id: client_id,
                 plan: plan
@@ -109,6 +112,14 @@ app.post("/api/create-checkout-session", async (req, res) => {
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
+});
+
+// verificar email (que está faltando):
+app.post("/api/check-email", async (req, res) => {
+    const { email } = req.body;
+    // Simular verificação no banco de dados
+    const emailExists = users.some(u => u.email === email);
+    res.json({ exists: emailExists });
 });
 
 // Endpoint para criar Payment Intent (mantido para compatibilidade)
@@ -126,4 +137,5 @@ app.post("/api/create-payment-intent", async (req, res) => {
     }
 });
 
-app.listen(3000, () => console.log("Servidor rodando na porta 3000"));
+const PORT = process.env.PORT || 3000; // Usa a porta do Render ou 3000 como fallback
+app.listen(PORT, () => console.log(`Servidor rodando na porta ${PORT}`));
