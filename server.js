@@ -4,6 +4,8 @@ const stripe = require("stripe")("sk_test_51Re2DXIGnSq3aVjyz6bGfgnrCIdej1KFBgimh
 const express = require("express");
 const bcrypt = require("bcrypt");
 
+const app = express();
+
 // ========================
 // Configuração de CORS
 // ========================
