@@ -1,8 +1,7 @@
 const express = require("express");
 const cors = require("cors");
-const stripe = require("stripe")("sk_test_51Re2DXIGnSq3aVjyz6bGfgnrCIdej1KFBgimhnVaMUsafC2wz1zkRAEq9v5sdeR5bRsH57dkfkFBRUPkYgdTmSAB003OUjspVp");
-const express = require("express");
 const bcrypt = require("bcrypt");
+const stripe = require("stripe")(process.env.STRIPE_API_KEY); // ⚠️ usar variável de ambiente no Render
 
 const app = express();
 
@@ -53,7 +52,6 @@ app.post("/api/register", async (req, res) => {
       return res.status(400).json({ error: "Preencha todos os campos obrigatórios." });
     }
 
-    // Hash da senha
     const hashedPassword = await bcrypt.hash(password, 10);
 
     const newUser = {
