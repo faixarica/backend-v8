@@ -99,7 +99,7 @@ app.post("/api/register-and-checkout", async (req, res) => {
     // Cria sessão de pagamento
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ["card", "boleto", "pix"],
-      mode: "payment",
+      mode: "subscription",
       line_items: [
         {
           price: priceIds[id_plano],
