@@ -103,7 +103,7 @@ app.post("/api/register-and-checkout", async (req, res) => {
 
     res.json({ sessionId: session.id });
   } catch (err) {
-    console.error(err);
+    console.error("Erro no checkout:", err);
     res.status(500).json({ error: err.message });
   } finally {
     client.release();
