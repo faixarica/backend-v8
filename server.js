@@ -49,7 +49,7 @@ app.post("/api/register-and-checkout", async (req, res) => {
 
     const nome_completo = full_name;
     const usuario = username;
-    const senha = password;
+    const senha = password; 
     const telefone = phone;
     const data_nascimento = birthdate;
 
@@ -156,6 +156,29 @@ app.get("/api/payment-success", async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message });
+  } finally {
+    client.release();
+  }
+});
+// ========================
+// Verificar se email já existe
+// ========================
+app.post("/api/check-email", async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const { email } = req.body;
+    if (!email) return res.status(400).json({ error: "Email não informado" });
+
+    const check = await client.query("SELECT id FROM usuarios WHERE email=$1", [email]);
+
+    if (check.rows.length > 0) {
+      return res.json({ exists: true });
+    } else {
+      return res.json({ exists: false });
+    }
+  } catch (err) {
+    console.error("Erro em /check-email:", err);
+    res.status(500).json({ error: "Erro interno" });
   } finally {
     client.release();
   }
