@@ -45,7 +45,17 @@ app.use(express.json());
 app.post("/api/register-and-checkout", async (req, res) => {
   const client = await pool.connect();
   try {
-    const { nome_completo, usuario, email, senha, data_nascimento, telefone, id_plano } = req.body;
+    const { full_name, username, birthdate, email, phone, password, plan } = req.body;
+
+    const nome_completo = full_name;
+    const usuario = username;
+    const senha = password;
+    const telefone = phone;
+    const data_nascimento = birthdate;
+
+    const mapPlano = { free: 1, silver: 2, gold: 3 };
+    const id_plano = mapPlano[plan];
+
 
     // Verifica se email já existe
     const check = await client.query("SELECT id FROM usuarios WHERE email=$1", [email]);
