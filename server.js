@@ -107,5 +107,27 @@ app.get("/api/payment-success", async (req, res) => {
   }
 });
 
+// ========================
+// Check se email já existe
+// ========================
+app.post("/api/check-email", async (req, res) => {
+  const { email } = req.body;
+  if (!email) return res.status(400).json({ error: "Email é obrigatório" });
+
+  const client = await pool.connect();
+  try {
+    const result = await client.query(
+      "SELECT 1 FROM usuarios WHERE email=$1 LIMIT 1",
+      [email]
+    );
+    res.json({ exists: result.rowCount > 0 });
+  } catch (err) {
+    console.error("Erro check-email:", err.message);
+    res.status(500).json({ error: err.message });
+  } finally {
+    client.release();
+  }
+});
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`Servidor rodando na porta ${PORT}`));
