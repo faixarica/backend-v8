@@ -10,6 +10,39 @@ const app = express();
 app.use(express.json());
 app.use(cors());
 
+// server.js
+
+// --- Validação de Variáveis de Ambiente Críticas ---
+const requiredEnvVars = [
+  'STRIPE_API_KEY',
+  'DATABASE_URL',
+  // Adicione outras variáveis críticas aqui
+];
+
+const missingEnvVars = requiredEnvVars.filter(envVar => !process.env[envVar]);
+
+if (missingEnvVars.length > 0) {
+  console.error("ERRO CRÍTICO: As seguintes variáveis de ambiente estão faltando:", missingEnvVars.join(', '));
+  process.exit(1); // Encerra o processo com código de erro
+}
+
+// Se você tiver planos específicos que exigem preços:
+const requiredPriceEnvVars = ['PRICE_SILVER', 'PRICE_GOLD'];
+const missingPriceEnvVars = requiredPriceEnvVars.filter(envVar => !process.env[envVar]);
+
+if (missingPriceEnvVars.length > 0) {
+  console.warn("AVISO: As seguintes variáveis de ambiente de preço estão faltando:", missingPriceEnvVars.join(', '));
+  // Ou, se forem críticas:
+  // console.error("ERRO CRÍTICO: Preços não configurados:", missingPriceEnvVars.join(', '));
+  // process.exit(1);
+}
+
+// --- Fim da Validação ---
+
+const stripe = require("stripe")(process.env.STRIPE_API_KEY);
+// ... restante do código
+
+
 // ========================
 // Conexão com Postgres
 // ========================
