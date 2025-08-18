@@ -1,5 +1,5 @@
 // ========================
-// server.js (corrigido para Stripe Checkout)
+// FaixaBet Backend - Stripe + Cadastro
 // ========================
 const express = require("express");
 const cors = require("cors");
@@ -16,32 +16,59 @@ const pool = new Pool({
   ssl: { rejectUnauthorized: false },
 });
 
-// Retorna a publishable key
+// ========================
+// Retornar publishableKey para o frontend
+// ========================
 app.get("/api/public-key", (req, res) => {
   res.json({ publishableKey: process.env.STRIPE_PUBLISHABLE_KEY });
 });
 
-// Registrar usuário e criar sessão do Stripe
+// ========================
+// Checar se email já existe
+// ========================
+app.post("/api/check-email", async (req, res) => {
+  const { email } = req.body;
+  if (!email) return res.status(400).json({ error: "Email é obrigatório" });
+
+  const client = await pool.connect();
+  try {
+    const result = await client.query(
+      "SELECT 1 FROM usuarios WHERE email=$1 LIMIT 1",
+      [email]
+    );
+    res.json({ exists: result.rowCount > 0 });
+  } catch (err) {
+    console.error("Erro check-email:", err.message);
+    res.status(500).json({ error: err.message });
+  } finally {
+    client.release();
+  }
+});
+
+// ========================
+// Registrar usuário e iniciar checkout
+// ========================
 app.post("/api/register-and-checkout", async (req, res) => {
   const client = await pool.connect();
   try {
     const { full_name, username, birthdate, email, phone, password, plan } = req.body;
 
-    // Inserir usuário
-    const userResult = await client.query(
-      `INSERT INTO usuarios (nome, username, email, telefone, senha, nascimento) 
+    // Ajuste: usar colunas existentes do seu banco
+    // Troque para os nomes reais da sua tabela `usuarios`
+    const result = await client.query(
+      `INSERT INTO usuarios (full_name, username, email, phone, password, birthdate) 
        VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`,
       [full_name, username, email, phone, password, birthdate || null]
     );
 
-    const userId = userResult.rows[0].id;
+    const userId = result.rows[0].id;
 
-    // Se plano free → não cria sessão Stripe
+    // Se for plano free → não cria sessão no Stripe
     if (plan === "free") {
       return res.json({ userId });
     }
 
-    // Mapear planos → priceId do Stripe
+    // Mapear planos → IDs de preços configurados no Stripe
     const priceMap = {
       silver: process.env.STRIPE_PRICE_SILVER,
       gold: process.env.STRIPE_PRICE_GOLD,
@@ -49,10 +76,10 @@ app.post("/api/register-and-checkout", async (req, res) => {
     const priceId = priceMap[plan];
     if (!priceId) throw new Error("Plano inválido");
 
-    // Criar sessão de checkout
+    // Criar sessão de checkout (assinatura mensal)
     const session = await stripe.checkout.sessions.create({
       mode: "subscription",
-      payment_method_types: ["card"], // somente cartão
+      payment_method_types: ["card"],
       line_items: [{ price: priceId, quantity: 1 }],
       success_url: "https://faixabet.com.br/?session_id={CHECKOUT_SESSION_ID}",
       cancel_url: "https://faixabet.com.br/cancel",
@@ -68,7 +95,9 @@ app.post("/api/register-and-checkout", async (req, res) => {
   }
 });
 
+// ========================
 // Confirmar pagamento
+// ========================
 app.get("/api/payment-success", async (req, res) => {
   try {
     const { session_id } = req.query;
@@ -80,11 +109,13 @@ app.get("/api/payment-success", async (req, res) => {
         const userId = session.metadata.userId;
         const plan = session.metadata.plan;
 
-        await client.query(
-          "UPDATE usuarios SET id_plano=$2 WHERE id=$1",
-          [userId, plan]
-        );
+        // Atualizar plano ativo do usuário
+        await client.query("UPDATE usuarios SET plan=$2 WHERE id=$1", [
+          userId,
+          plan,
+        ]);
 
+        // Registrar no histórico
         await client.query(
           "INSERT INTO client_plans (id_client, id_plano, ativo) VALUES ($1,$2,true) ON CONFLICT (id_client) DO UPDATE SET id_plano=$2, ativo=true",
           [userId, plan]
@@ -108,26 +139,7 @@ app.get("/api/payment-success", async (req, res) => {
 });
 
 // ========================
-// Check se email já existe
+// Start server
 // ========================
-app.post("/api/check-email", async (req, res) => {
-  const { email } = req.body;
-  if (!email) return res.status(400).json({ error: "Email é obrigatório" });
-
-  const client = await pool.connect();
-  try {
-    const result = await client.query(
-      "SELECT 1 FROM usuarios WHERE email=$1 LIMIT 1",
-      [email]
-    );
-    res.json({ exists: result.rowCount > 0 });
-  } catch (err) {
-    console.error("Erro check-email:", err.message);
-    res.status(500).json({ error: err.message });
-  } finally {
-    client.release();
-  }
-});
-
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`Servidor rodando na porta ${PORT}`));
