@@ -73,8 +73,8 @@ app.post("/api/register-and-checkout", async (req, res) => {
 
     // Mapear planos → IDs de preços configurados no Stripe
     const priceMap = {
-      silver: process.env.STRIPE_PRICE_SILVER,
-      gold: process.env.STRIPE_PRICE_GOLD,
+      silver: process.env.PRICE_SILVER,
+      gold: process.env.PRICE_GOLD,
     };
     const priceId = priceMap[plan];
     if (!priceId) throw new Error("Plano inválido");
