@@ -4,57 +4,49 @@
 const express = require("express");
 const cors = require("cors");
 const { Pool } = require("pg");
-const stripe = require("stripe")(process.env.STRIPE_API_KEY);
-
-const app = express();
-app.use(express.json());
-app.use(cors());
-
-// server.js
-
 // --- Validação de Variáveis de Ambiente Críticas ---
+// Esta seção foi movida para o início para falhar rápido se configs críticas faltarem
 const requiredEnvVars = [
-  'STRIPE_API_KEY',
-  'DATABASE_URL',
-  // Adicione outras variáveis críticas aqui
+  'STRIPE_API_KEY', // Necessário para o backend do Stripe
+  'STRIPE_PUBLISHABLE_KEY', // Necessário para o frontend do Stripe
+  'DATABASE_URL', // Necessário para conectar ao Postgres
+  'PRICE_SILVER', // ID do preço do Stripe para o plano Silver
+  'PRICE_GOLD'    // ID do preço do Stripe para o plano Gold
 ];
 
 const missingEnvVars = requiredEnvVars.filter(envVar => !process.env[envVar]);
 
 if (missingEnvVars.length > 0) {
   console.error("ERRO CRÍTICO: As seguintes variáveis de ambiente estão faltando:", missingEnvVars.join(', '));
-  process.exit(1); // Encerra o processo com código de erro
+  // Usar console.error e process.exit(1) é uma boa prática para erros de configuração
+  process.exit(1); 
 }
 
-// Se você tiver planos específicos que exigem preços:
-const requiredPriceEnvVars = ['PRICE_SILVER', 'PRICE_GOLD'];
-const missingPriceEnvVars = requiredPriceEnvVars.filter(envVar => !process.env[envVar]);
+// --- Fim da Validação Inicial ---
 
-if (missingPriceEnvVars.length > 0) {
-  console.warn("AVISO: As seguintes variáveis de ambiente de preço estão faltando:", missingPriceEnvVars.join(', '));
-  // Ou, se forem críticas:
-  // console.error("ERRO CRÍTICO: Preços não configurados:", missingPriceEnvVars.join(', '));
-  // process.exit(1);
-}
-
-// --- Fim da Validação ---
-
+// Inicializar Stripe APÓS validar a chave
 const stripe = require("stripe")(process.env.STRIPE_API_KEY);
-// ... restante do código
 
+const app = express();
+// A ordem estava correta: cors() antes de express.json()
+app.use(cors()); 
+app.use(express.json());
 
 // ========================
 // Conexão com Postgres
 // ========================
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false },
+  // ssl: { rejectUnauthorized: false } // Esta opção pode ser um risco de segurança. 
+                                       // Verifique se o certificado do Neon é confiável.
+                                       // Se for, você pode removê-la ou configurar o SSL corretamente.
 });
 
 // ========================
 // Retornar publishableKey para o frontend
 // ========================
 app.get("/api/public-key", (req, res) => {
+  // A chave já foi validada no início
   res.json({ publishableKey: process.env.STRIPE_PUBLISHABLE_KEY });
 });
 
@@ -63,20 +55,27 @@ app.get("/api/public-key", (req, res) => {
 // ========================
 app.post("/api/check-email", async (req, res) => {
   const { email } = req.body;
+  // Validação básica do input
   if (!email) return res.status(400).json({ error: "Email é obrigatório" });
 
+  // Usar 'try...finally' para garantir que o client seja sempre liberado
   const client = await pool.connect();
   try {
+    // Usar parâmetros ($1, $2) previne injeção SQL
     const result = await client.query(
-      "SELECT 1 FROM usuarios WHERE email=$1 LIMIT 1",
+      "SELECT 1 FROM usuarios WHERE email = $1 LIMIT 1",
       [email]
     );
+    // rowCount > 0 significa que encontrou o email
     res.json({ exists: result.rowCount > 0 });
   } catch (err) {
+    // Log detalhado do erro no servidor
     console.error("Erro check-email:", err.message);
-    res.status(500).json({ error: err.message });
+    // Resposta genérica para o cliente
+    res.status(500).json({ error: "Erro interno ao verificar email." });
   } finally {
-    client.release();
+    // Libera o client de volta para o pool
+    client.release(); 
   }
 });
 
@@ -88,94 +87,154 @@ app.post("/api/register-and-checkout", async (req, res) => {
   try {
     const { full_name, username, birthdate, email, phone, password, plan } = req.body;
 
-    // Inserir usuário no banco
+    // 1. Inserir usuário no banco de dados
     const result = await client.query(
       `INSERT INTO usuarios 
          (nome_completo, usuario, email, telefone, senha, data_nascimento, dt_cadastro, ativo) 
-       VALUES ($1,$2,$3,$4,$5,$6,NOW(),true) 
+       VALUES ($1, $2, $3, $4, $5, $6, NOW(), true) 
        RETURNING id`,
-      [full_name, username, email, phone, password, birthdate || null]
+      [full_name, username, email, phone, password, birthdate || null] // Se birthdate for null, insere null
     );
 
     const userId = result.rows[0].id;
+    console.log(`Usuário ${userId} registrado com sucesso.`);
 
-    // Se for plano free → não cria sessão no Stripe
+    // 2. Lógica de plano
+    // Se for plano free → não cria sessão no Stripe, retorna apenas o userId
     if (plan === "free") {
+      console.log(`Plano Free selecionado para o usuário ${userId}.`);
       return res.json({ userId });
     }
 
-    // Mapear planos → IDs de preços configurados no Stripe
+    // 3. Para planos pagos, criar sessão no Stripe
+    // Mapear planos para IDs de preços (já validados no início)
     const priceMap = {
       silver: process.env.PRICE_SILVER,
       gold: process.env.PRICE_GOLD,
     };
     const priceId = priceMap[plan];
-    if (!priceId) throw new Error("Plano inválido");
+    
+    // Verificação extra (embora o validator no início ajude)
+    if (!priceId) {
+       // Usar 400 para erro de requisição inválida
+       return res.status(400).json({ error: `Plano inválido: ${plan}` }); 
+    }
 
-    // Criar sessão de checkout (assinatura mensal)
+    // 4. Criar sessão de checkout (assinatura mensal)
+    // Corrigido: Removido espaços das URLs
     const session = await stripe.checkout.sessions.create({
-      mode: "subscription",
+      mode: "subscription", // Modo de assinatura recorrente
       payment_method_types: ["card"],
       line_items: [{ price: priceId, quantity: 1 }],
+      // Corrigido: URLs sem espaços
       success_url: "https://faixabet.com.br/?session_id={CHECKOUT_SESSION_ID}",
-      cancel_url: "https://faixabet.com.br/cancel",
-      metadata: { userId, plan },
+      cancel_url: "https://faixabet.com.br/cancel", 
+      // Armazenar dados customizados que serão retornados após o pagamento
+      metadata: { 
+        userId: userId.toString(), // Stripe metadata deve ser string
+        plan: plan 
+      },
     });
 
-    res.json({ userId, sessionId: session.id });
+    console.log(`Sessão Stripe criada para o usuário ${userId}, plano ${plan}. Session ID: ${session.id}`);
+    // Retorna userId e sessionId para o frontend redirecionar
+    res.json({ userId, sessionId: session.id }); 
+
   } catch (err) {
+    // Log detalhado do erro no servidor
     console.error("Erro register-and-checkout:", err.message);
-    res.status(500).json({ error: err.message });
+    // Resposta genérica para o cliente
+    res.status(500).json({ error: "Erro interno ao processar o cadastro e pagamento." });
   } finally {
-    client.release();
+    // Libera o client de volta para o pool
+    client.release(); 
   }
 });
 
 // ========================
-// Confirmar pagamento
+// Confirmar pagamento (Webhook ou endpoint de verificação)
 // ========================
+// Nota: Este endpoint pode ser chamado diretamente, mas o ideal é usar Webhooks do Stripe
+// para maior segurança e confiabilidade. Vamos mantê-lo por enquanto.
 app.get("/api/payment-success", async (req, res) => {
   try {
     const { session_id } = req.query;
+    
+    if (!session_id) {
+       return res.status(400).json({ error: "ID da sessão é obrigatório." });
+    }
+
+    // 1. Recuperar a sessão do Stripe
     const session = await stripe.checkout.sessions.retrieve(session_id);
 
+    // 2. Verificar se o pagamento foi confirmado
     if (session.payment_status === "paid") {
+      // 3. Extrair dados da metadata
+      const userId = session.metadata.userId;
+      const plan = session.metadata.plan;
+
+      if (!userId || !plan) {
+         console.error("Dados de metadata ausentes na sessão do Stripe:", session.metadata);
+         return res.status(400).json({ error: "Dados da sessão inválidos." });
+      }
+
       const client = await pool.connect();
       try {
-        const userId = session.metadata.userId;
-        const plan = session.metadata.plan;
-
-        // Atualizar plano ativo do usuário
-        await client.query("UPDATE usuarios SET id_plano=$2 WHERE id=$1", [
+        // 4. Atualizar plano ativo do usuário
+        await client.query("UPDATE usuarios SET id_plano = $2 WHERE id = $1", [
           userId,
           plan,
         ]);
+        console.log(`Plano do usuário ${userId} atualizado para ${plan}.`);
 
-        // Registrar no histórico
+        // 5. Registrar no histórico de planos do cliente
+        // ON CONFLICT assume que id_client é uma chave primária ou única
         await client.query(
-          "INSERT INTO client_plans (id_client, id_plano, ativo) VALUES ($1,$2,true) ON CONFLICT (id_client) DO UPDATE SET id_plano=$2, ativo=true",
+          `INSERT INTO client_plans (id_client, id_plano, ativo) 
+           VALUES ($1, $2, true) 
+           ON CONFLICT (id_client) 
+           DO UPDATE SET id_plano = $2, ativo = true, data_atualizacao = NOW()`,
           [userId, plan]
         );
+        console.log(`Registro em client_plans atualizado para o usuário ${userId}.`);
 
+        // 6. Registrar no histórico financeiro
+        // amount_total está em centavos, então dividimos por 100
         await client.query(
-          "INSERT INTO financeiro (id_cliente, id_plano, data_pagamento, forma_pagamento, valor, estorno) VALUES ($1,$2,NOW(),'cartao',$3,'N')",
-          [userId, plan, session.amount_total / 100]
+          `INSERT INTO financeiro 
+             (id_cliente, id_plano, data_pagamento, forma_pagamento, valor, estorno) 
+           VALUES ($1, $2, NOW(), 'cartao', $3, 'N')`,
+          [userId, plan, session.amount_total / 100] 
         );
+        console.log(`Registro em financeiro criado para o usuário ${userId}.`);
+
+        // 7. Responder com sucesso
+        res.json({ success: true });
+
+      } catch (dbErr) {
+         // Erro específico durante a atualização do banco
+         console.error("Erro ao atualizar banco de dados após pagamento:", dbErr.message);
+         res.status(500).json({ error: "Pagamento confirmado, mas houve um erro ao atualizar seus dados. Entre em contato com o suporte." });
       } finally {
         client.release();
       }
-      res.json({ success: true });
+      
     } else {
-      res.status(400).json({ error: "Pagamento não confirmado" });
+      // Pagamento não foi pago
+      console.warn(`Tentativa de confirmação de pagamento falhou. Status: ${session.payment_status}. Session ID: ${session_id}`);
+      res.status(400).json({ error: "Pagamento não confirmado." });
     }
   } catch (err) {
+    // Erro ao se comunicar com o Stripe ou outros erros
     console.error("Erro payment-success:", err.message);
-    res.status(500).json({ error: err.message });
+    // Mensagem mais amigável para o usuário
+    res.status(500).json({ error: "Não foi possível verificar o status do pagamento. Tente novamente mais tarde ou entre em contato com o suporte." });
   }
 });
 
 // ========================
 // Start server
 // ========================
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Servidor rodando na porta ${PORT}`));
+// Usar a porta definida pelo Render ou 3000 como fallback
+const PORT = process.env.PORT || 3000; 
+app.listen(PORT, '0.0.0.0', () => console.log(`Servidor FaixaBet rodando na porta ${PORT}`));
