@@ -96,67 +96,49 @@ app.post("/api/register-and-checkout", async (req, res) => {
   try {
     const { full_name, username, birthdate, email, phone, password, plan } = req.body;
 
-    // 1. Inserir usuário no banco de dados
     const result = await client.query(
       `INSERT INTO usuarios 
          (nome_completo, usuario, email, telefone, senha, data_nascimento, dt_cadastro, ativo) 
        VALUES ($1, $2, $3, $4, $5, $6, NOW(), true) 
        RETURNING id`,
-      [full_name, username, email, phone, password, birthdate || null] // Se birthdate for null, insere null
+      [full_name, username, email, phone, password, birthdate || null]
     );
-
     const userId = result.rows[0].id;
     console.log(`Usuário ${userId} registrado com sucesso.`);
 
-    // 2. Lógica de plano
-    // Se for plano free → não cria sessão no Stripe, retorna apenas o userId
     if (plan === "free") {
       console.log(`Plano Free selecionado para o usuário ${userId}.`);
       return res.json({ userId });
     }
 
-    // 3. Para planos pagos, criar sessão no Stripe
-    // Mapear planos para IDs de preços (já validados no início)
     const priceMap = {
       silver: process.env.PRICE_SILVER,
       gold: process.env.PRICE_GOLD,
     };
     const priceId = priceMap[plan];
-    
-    // Verificação extra (embora o validator no início ajude)
     if (!priceId) {
-       // Usar 400 para erro de requisição inválida
-       return res.status(400).json({ error: `Plano inválido: ${plan}` }); 
+      return res.status(400).json({ error: `Plano inválido: ${plan}` });
     }
 
-    // 4. Criar sessão de checkout (assinatura mensal)
-    // Corrigido: Removido espaços das URLs
     const session = await stripe.checkout.sessions.create({
-      mode: "subscription", // Modo de assinatura recorrente
-      payment_method_types: ["card"],
+      mode: "subscription",
       line_items: [{ price: priceId, quantity: 1 }],
-      // Corrigido: URLs sem espaços
       success_url: "https://faixabet.com.br/?session_id={CHECKOUT_SESSION_ID}",
-      cancel_url: "https://faixabet.com.br/cancel", 
-      // Armazenar dados customizados que serão retornados após o pagamento
-      metadata: { 
-        userId: userId.toString(), // Stripe metadata deve ser string
-        plan: plan 
-      },
+      cancel_url: "https://faixabet.com.br/cancel",
+      metadata: { userId: String(userId), plan },
+      // opcional, mas ajuda no debug:
+      // client_reference_id: String(userId),
     });
 
     console.log(`Sessão Stripe criada para o usuário ${userId}, plano ${plan}. Session ID: ${session.id}`);
-    // Retorna userId e sessionId para o frontend redirecionar
-    res.json({ userId, sessionId: session.id }); 
 
+    // 💡 DEVOLVER PARA O FRONT
+    return res.json({ userId, sessionId: session.id });
   } catch (err) {
-    // Log detalhado do erro no servidor
-    console.error("Erro register-and-checkout:", err.message);
-    // Resposta genérica para o cliente
-    res.status(500).json({ error: "Erro interno ao processar o cadastro e pagamento." });
+    console.error("Erro em /api/register-and-checkout:", err);
+    return res.status(500).json({ error: "Falha ao criar sessão de checkout" });
   } finally {
-    // Libera o client de volta para o pool
-    client.release(); 
+    client.release();
   }
 });
 
