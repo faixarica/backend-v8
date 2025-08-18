@@ -1,6 +1,6 @@
-// =====================================
-// FaixaBet Backend - Stripe + Cadastro - v8.002
-// ======================================
+// ========================
+// FaixaBet Backend - Stripe + Cadastro
+// ========================
 const express = require("express");
 const cors = require("cors");
 const { Pool } = require("pg");
@@ -10,7 +10,9 @@ const app = express();
 app.use(express.json());
 app.use(cors());
 
+// ========================
 // Conexão com Postgres
+// ========================
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: { rejectUnauthorized: false },
@@ -53,11 +55,12 @@ app.post("/api/register-and-checkout", async (req, res) => {
   try {
     const { full_name, username, birthdate, email, phone, password, plan } = req.body;
 
-    // Ajuste: usar colunas existentes do seu banco
-    // Troque para os nomes reais da sua tabela `usuarios`
+    // Inserir usuário no banco
     const result = await client.query(
-      `INSERT INTO usuarios (full_name, username, email, phone, password, birthdate) 
-       VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`,
+      `INSERT INTO usuarios 
+         (nome_completo, usuario, email, telefone, senha, data_nascimento, dt_cadastro, ativo) 
+       VALUES ($1,$2,$3,$4,$5,$6,NOW(),true) 
+       RETURNING id`,
       [full_name, username, email, phone, password, birthdate || null]
     );
 
@@ -110,7 +113,7 @@ app.get("/api/payment-success", async (req, res) => {
         const plan = session.metadata.plan;
 
         // Atualizar plano ativo do usuário
-        await client.query("UPDATE usuarios SET plan=$2 WHERE id=$1", [
+        await client.query("UPDATE usuarios SET id_plano=$2 WHERE id=$1", [
           userId,
           plan,
         ]);
