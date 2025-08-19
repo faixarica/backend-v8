@@ -82,7 +82,7 @@ app.post("/api/check-email", async (req, res) => {
   if (!email) return res.status(400).json({ error: "Email é obrigatório" });
 
   try {
-    const result = await pool.query("SELECT id FROM usuario WHERE email = $1", [email]);
+    const result = await pool.query("SELECT id FROM usuarios WHERE email = $1", [email]);
     return res.json({ exists: result.rows.length > 0 });
   } catch (err) {
     console.error("Erro no check-email:", err);
@@ -114,7 +114,7 @@ app.post("/api/register-and-checkout", async (req, res) => {
 
   try {
     // 1. Checar se email já existe
-    const checkUser = await pool.query("SELECT id FROM usuario WHERE email = $1", [email]);
+    const checkUser = await pool.query("SELECT id FROM usuarios WHERE email = $1", [email]);
     if (checkUser.rows.length > 0) {
       return res.status(400).json({ error: "Email já cadastrado" });
     }
