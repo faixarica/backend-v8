@@ -60,14 +60,18 @@ const pool = new Pool({
 app.get("/", (req, res) => {
   res.json({ message: "API online 🚀" });
 });
-
-// ✅ Somente a publishable key (pk_...) vai para o front
+// ------------------------
+// Rota: Public Key do Stripe (segura)
+// ------------------------
 app.get("/api/public-key", (req, res) => {
-  if (!STRIPE_PUBLISHABLE) {
+  const publishableKey = process.env.STRIPE_PUBLISHABLE_KEY; // pk_test_... ou pk_live_...
+  if (!publishableKey) {
+    console.error("❌ STRIPE_PUBLISHABLE_KEY não configurada no Render");
     return res.status(500).json({ error: "Stripe publishable key não configurada" });
   }
-  res.json({ publishableKey: STRIPE_PUBLISHABLE });
+  res.json({ publishableKey });
 });
+
 
 /////
 // ------------------------
