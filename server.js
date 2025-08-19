@@ -3,7 +3,7 @@
 // ========================
 const express = require("express");
 const cors = require("cors");
-const bcrypt = require("bcrypt");
+const bcrypt = require("bcryptjs");
 const { Pool } = require("pg");
 const stripe = require("stripe")(process.env.STRIPE_API_KEY);
 
@@ -52,7 +52,7 @@ app.get("/", (req, res) => {
 
 // Rota para expor a chave pública Stripe
 app.get("/api/public-key", (req, res) => {
-  res.json({ publishableKey: process.env.STRIPE_PUBLISHABLE_KEY });
+  res.json({ publishableKey: process.env.STRIPE_API_KEY });
 });
 
 // ========================
