@@ -3,15 +3,8 @@
 // ========================
 const express = require("express");
 const cors = require("cors");
+const bcrypt = require("bcrypt");
 const { Pool } = require("pg");
-
-// server.js
-console.log("=== Iniciando FaixaBet Backend ===");
-console.log("__dirname:", __dirname);
-console.log("process.cwd():", process.cwd());
-
-// --- Validação de Variáveis de Ambiente Críticas ---
-// ... (resto do seu código)
 
 // --- Validação de Variáveis de Ambiente Críticas ---
 // Esta seção foi movida para o início para falhar rápido se configs críticas faltarem
@@ -24,6 +17,10 @@ const requiredEnvVars = [
 ];
 
 const missingEnvVars = requiredEnvVars.filter(envVar => !process.env[envVar]);
+
+console.log("=== Iniciando FaixaBet Backend ===");
+console.log("__dirname:", __dirname);
+console.log("process.cwd():", process.cwd());
 
 if (missingEnvVars.length > 0) {
   console.error("ERRO CRÍTICO: As seguintes variáveis de ambiente estão faltando:", missingEnvVars.join(', '));
