@@ -90,7 +90,6 @@ app.post("/api/check-email", async (req, res) => {
   }
 });
 
-
 // ------------------------
 // Rota: Registrar usuário + iniciar checkout
 // ------------------------
