@@ -33,18 +33,21 @@ const allowedOrigins = new Set([
   "http://127.0.0.1:5500",
 ]);
 
-app.use(
-  cors({
-    origin(origin, callback) {
-      if (!origin) return callback(null, true); // Postman, curl etc.
-      if (allowedOrigins.has(origin)) return callback(null, true);
-      return callback(new Error("CORS não permitido para: " + origin));
-    },
-    credentials: false, // não usamos cookies/sessões via navegador
-  })
-);
+app.use(cors({
+  origin: (origin, callback) => {
+    if (!origin || allowedOrigins.has(origin)) {
+      return callback(null, true);
+    }
+    return callback(new Error("CORS não permitido para: " + origin));
+  },
+  credentials: true, // melhor deixar true para Stripe + fetch
+}));
 
-app.use(express.json());
+
+
+//app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
 
 // ------------------------
 // Postgres
@@ -85,14 +88,18 @@ app.get("/api/public-key", (req, res) => {
 // ------------------------
 app.post("/api/check-email", async (req, res) => {
   try {
-    console.log("Body recebido:", req.body); // <--- debug aqui
+    console.log("Body recebido:", req.body);
     const { email } = req.body;
+
     if (!email) {
       return res.status(400).json({ error: "E-mail não enviado no body" });
     }
 
-    // consulta ao banco...
-    res.json({ ok: true });
+    const checkUser = await pool.query("SELECT id FROM usuarios WHERE email = $1", [email]);
+    if (checkUser.rows.length > 0) {
+      return res.json({ exists: true });
+    }
+    res.json({ exists: false });
   } catch (err) {
     console.error("Erro backend /check-email:", err);
     res.status(500).json({ error: "Erro backend: " + err.message });
