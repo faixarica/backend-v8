@@ -45,7 +45,7 @@ app.use(cors({
 
 
 
-//app.use(express.json());
+app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 
@@ -86,25 +86,30 @@ app.get("/api/public-key", (req, res) => {
 // ------------------------
 // Rota: Checar email
 // ------------------------
-app.post("/api/check-email", async (req, res) => {
+// ========================
+// POST /check-email
+// ========================
+app.post('/api/check-email', async (req, res) => {
+  const { email } = req.body;
+
+  if (!email) {
+    return res.status(400).json({ error: 'Email não fornecido' });
+  }
+
   try {
-    console.log("Body recebido:", req.body);
-    const { email } = req.body;
+    // Query usando parâmetro $1
+    const query = 'SELECT * FROM usuarios WHERE email = $1';
+    const values = [email];
+    const result = await pool.query(query, values);
 
-    if (!email) {
-      return res.status(400).json({ error: "E-mail não enviado no body" });
-    }
-
-    const checkUser = await pool.query("SELECT id FROM usuarios WHERE email = $1", [email]);
-    if (checkUser.rows.length > 0) {
-      return res.json({ exists: true });
-    }
-    res.json({ exists: false });
+    // Retorna se existe ou não
+    res.json({ exists: result.rows.length > 0 });
   } catch (err) {
-    console.error("Erro backend /check-email:", err);
-    res.status(500).json({ error: "Erro backend: " + err.message });
+    console.error('Erro ao checar email:', err);
+    res.status(500).json({ error: 'Erro interno ao checar email' });
   }
 });
+
 
 
 // ------------------------
