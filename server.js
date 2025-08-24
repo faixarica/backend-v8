@@ -85,13 +85,20 @@ app.get("/api/public-key", (req, res) => {
 // ------------------------
 app.post("/api/check-email", async (req, res) => {
   try {
-    const result = await pool.query("SELECT id FROM usuarios WHERE email = $1", [req.body.email]);
-    res.json({ exists: result.rows.length > 0 });
+    console.log("Body recebido:", req.body); // <--- debug aqui
+    const { email } = req.body;
+    if (!email) {
+      return res.status(400).json({ error: "E-mail não enviado no body" });
+    }
+
+    // consulta ao banco...
+    res.json({ ok: true });
   } catch (err) {
-    console.error("Erro no check-email:", err.message, err.stack); // <- detalhe
-    res.status(500).json({ error: "Erro interno no servidor" });
+    console.error("Erro backend /check-email:", err);
+    res.status(500).json({ error: "Erro backend: " + err.message });
   }
 });
+
 
 // ------------------------
 // Rota: Registrar usuário + iniciar checkout
