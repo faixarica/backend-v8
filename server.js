@@ -57,8 +57,14 @@ const pool = new Pool({
 // ------------------------
 // Rotas auxiliares
 // ------------------------
-app.get("/", (req, res) => {
-  res.json({ message: "API online 🚀" });
+app.get("/api/health", async (req, res) => {
+  try {
+    await pool.query("SELECT 1");
+    res.json({ ok: true });
+  } catch (e) {
+    console.error("DB health error:", e);
+    res.status(500).json({ ok: false, error: e.message });
+  }
 });
 // ------------------------
 // Rota: Public Key do Stripe (segura)
@@ -78,15 +84,12 @@ app.get("/api/public-key", (req, res) => {
 // Rota: Checar email
 // ------------------------
 app.post("/api/check-email", async (req, res) => {
-  const { email } = req.body;
-  if (!email) return res.status(400).json({ error: "Email é obrigatório" });
-
   try {
-    const result = await pool.query("SELECT id FROM usuarios WHERE email = $1", [email]);
-    return res.json({ exists: result.rows.length > 0 });
+    const result = await pool.query("SELECT id FROM usuarios WHERE email = $1", [req.body.email]);
+    res.json({ exists: result.rows.length > 0 });
   } catch (err) {
-    console.error("Erro no check-email:", err);
-    return res.status(500).json({ error: "Erro interno no servidor" });
+    console.error("Erro no check-email:", err.message, err.stack); // <- detalhe
+    res.status(500).json({ error: "Erro interno no servidor" });
   }
 });
 
@@ -96,7 +99,7 @@ app.post("/api/check-email", async (req, res) => {
 app.post("/api/register-and-checkout", async (req, res) => {
   const { full_name, username, birthdate, email, phone, password, plan } = req.body;
 
-  if (!full_name || !username || !birthdate || !email || !phone || !password || !plan) {
+  if (!full_name || !username || !email || !password || !plan) {
     return res.status(400).json({ error: "Todos os campos são obrigatórios" });
   }
 
@@ -124,7 +127,7 @@ app.post("/api/register-and-checkout", async (req, res) => {
 
     // 3. Inserir usuário na tabela `usuario`
     const insertUser = await pool.query(
-      `INSERT INTO usuario 
+      `INSERT INTO usuarios 
          (nome_completo, usuario, data_nascimento, email, telefone, senha, id_plano) 
        VALUES ($1,$2,$3,$4,$5,$6,$7) 
        RETURNING id`,
