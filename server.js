@@ -110,8 +110,6 @@ app.post('/api/check-email', async (req, res) => {
   }
 });
 
-
-
 // ------------------------
 // Rota: Registrar usuário + iniciar checkout
 // ------------------------
@@ -124,9 +122,9 @@ app.post("/api/register-and-checkout", async (req, res) => {
 
   // Mapeamento de plano (front → banco)
   const PLANOS = {
-    free: { id_plano: 1, stripePrice: null },
+    free:   { id_plano: 1, stripePrice: null },
     silver: { id_plano: 2, stripePrice: process.env.STRIPE_PRICE_SILVER },
-    gold: { id_plano: 3, stripePrice: process.env.STRIPE_PRICE_GOLD },
+    gold:   { id_plano: 3, stripePrice: process.env.STRIPE_PRICE_GOLD },
   };
 
   const planoKey = String(plan || "").toLowerCase();
@@ -144,19 +142,31 @@ app.post("/api/register-and-checkout", async (req, res) => {
     // 2. Criar hash da senha
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // 3. Inserir usuário na tabela `usuario`
+    // 3. Inserir usuário na tabela `usuarios`
     const insertUser = await pool.query(
       `INSERT INTO usuarios 
-         (nome_completo, usuario, data_nascimento, email, telefone, senha, id_plano) 
-       VALUES ($1,$2,$3,$4,$5,$6,$7) 
+        (nome_completo, usuario, data_nascimento, email, telefone, senha, id_plano, ativo) 
+       VALUES ($1,$2,$3,$4,$5,$6,$7,true) 
        RETURNING id`,
       [full_name, username, birthdate, email, phone, hashedPassword, PLANOS[planoKey].id_plano]
     );
 
     const userId = insertUser.rows[0].id;
 
-    // 4. Se for plano Free → já retorna sucesso
+    // 4. Se for plano Free → já grava client_plans e financeiro
     if (planoKey === "free") {
+      await pool.query(
+        `INSERT INTO client_plans (id_client, id_plano, data_inclusao, data_expira_plan, ativo)
+         VALUES ($1, $2, now(), (now() + interval '30 days'), true)`,
+        [userId, PLANOS[planoKey].id_plano]
+      );
+
+      await pool.query(
+        `INSERT INTO financeiro (id_cliente, id_plano, data_pagamento, forma_pagamento, valor, data_validade)
+         VALUES ($1, $2, now(), $3, $4, (now() + interval '30 days'))`,
+        [userId, PLANOS[planoKey].id_plano, "free", 0.0]
+      );
+
       return res.json({ userId });
     }
 
@@ -169,7 +179,7 @@ app.post("/api/register-and-checkout", async (req, res) => {
     const session = await stripe.checkout.sessions.create({
       mode: "subscription",
       line_items: [{ price: priceId, quantity: 1 }],
-      success_url: "https://www.faixabet.com.br/sucesso?session_id={CHECKOUT_SESSION_ID}",
+      success_url: "https://www.faixabet.com.br/sucess.html",
       cancel_url: "https://www.faixabet.com.br/cancelado",
       client_reference_id: String(userId),
       customer_email: email,
@@ -184,28 +194,73 @@ app.post("/api/register-and-checkout", async (req, res) => {
 });
 
 
-
 ///
 // ------------------------
-// Rota: Confirmar pagamento (após Stripe)
+// Rota: Confirmar pagamento (após Stripe) atualizado em 24/08
+// ------------------------
+// ------------------------
+// Rota: Confirmar pagamento Stripe
 // ------------------------
 app.get("/api/payment-success", async (req, res) => {
   const { session_id } = req.query;
-  if (!session_id) return res.status(400).json({ error: "session_id é obrigatório" });
+  if (!session_id) {
+    return res.status(400).json({ error: "session_id é obrigatório" });
+  }
 
   try {
+    // Recuperar sessão no Stripe
     const session = await stripe.checkout.sessions.retrieve(session_id);
-    // status típico: 'complete' quando o checkout finaliza
-    return res.json({
-      status: session.status,
-      mode: session.mode,
-      subscription: session.subscription,
-    });
+
+    if (session.payment_status !== "paid") {
+      return res.json({ status: "pending" });
+    }
+
+    const userId = parseInt(session.client_reference_id, 10);
+    const planoKey = session.metadata.plano;
+    const PLANOS = {
+      free: { id: 1 },
+      silver: { id: 2 },
+      gold: { id: 3 },
+    };
+
+    const planoId = PLANOS[planoKey]?.id || null;
+    if (!planoId) {
+      return res.status(400).json({ error: "Plano inválido em metadata" });
+    }
+
+    // 1) Inserir em client_plans
+    await pool.query(
+      `INSERT INTO client_plans (id_client, id_plano, data_inclusao, data_expira_plan, ativo)
+       VALUES ($1, $2, now(), (now() + interval '30 days'), true)`,
+      [userId, planoId]
+    );
+
+    // 2) Inserir em financeiro
+    await pool.query(
+      `INSERT INTO financeiro (id_cliente, id_plano, data_pagamento, forma_pagamento, valor, data_validade)
+       VALUES ($1, $2, now(), $3, $4, (now() + interval '30 days'))`,
+      [
+        userId,
+        planoId,
+        session.payment_method_types?.[0] || "stripe",
+        session.amount_total ? session.amount_total / 100 : 0.0, // converte de cents para reais
+      ]
+    );
+
+    // 3) Atualizar usuário para ativo no plano
+    await pool.query(
+      "UPDATE usuarios SET ativo = true, id_plano = $2 WHERE id = $1",
+      [userId, planoId]
+    );
+
+    return res.json({ status: "complete" });
   } catch (err) {
-    console.error("Erro ao recuperar sessão:", err);
-    return res.status(500).json({ error: "Erro ao verificar sessão" });
+    console.error("Erro no payment-success:", err);
+    return res.status(500).json({ error: "Erro ao confirmar pagamento" });
   }
 });
+
+
 
 // ------------------------
 // Start
@@ -214,3 +269,7 @@ const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
   console.log(`Servidor rodando na porta ${PORT}`);
 });
+
+
+
+
