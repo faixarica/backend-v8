@@ -35,8 +35,12 @@ const allowedOrigins = new Set([
 
 app.use(cors({
   origin: (origin, callback) => {
-    // Permite se for localhost, faixabet.com, ou não tiver origin (caso do Stripe / Postman)
-    if (!origin || /faixabet.com$/.test(origin) || origin.startsWith("http://localhost")) {
+    // Permite localhost, faixabet.com, www.faixabet.com, faixabet.com.br, www.faixabet.com.br
+    if (
+      !origin ||
+      /^https?:\/\/(www\.)?faixabet\.com(\.br)?$/.test(origin) ||
+      origin.startsWith("http://localhost")
+    ) {
       return callback(null, true);
     }
     return callback(new Error("CORS não permitido para: " + origin));
