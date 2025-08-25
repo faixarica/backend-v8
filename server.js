@@ -179,7 +179,7 @@ app.post("/api/register-and-checkout", async (req, res) => {
     const session = await stripe.checkout.sessions.create({
       mode: "subscription",
       line_items: [{ price: priceId, quantity: 1 }],
-      success_url: "https://www.faixabet.com.br/sucess.html",
+      success_url: "https://www.faixabet.com.br/success.html",
       cancel_url: "https://www.faixabet.com.br/cancelado",
       client_reference_id: String(userId),
       customer_email: email,
