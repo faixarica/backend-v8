@@ -36,7 +36,7 @@ const allowedOrigins = new Set([
 app.use(cors({
   origin: (origin, callback) => {
     // Permite se for localhost, faixabet.com, ou não tiver origin (caso do Stripe / Postman)
-    if (!origin || /faixabet\.com$/.test(origin) || origin.startsWith("http://localhost")) {
+    if (!origin || /faixabet.com$/.test(origin) || origin.startsWith("http://localhost")) {
       return callback(null, true);
     }
     return callback(new Error("CORS não permitido para: " + origin));
@@ -180,7 +180,7 @@ app.post("/api/register-and-checkout", async (req, res) => {
     const session = await stripe.checkout.sessions.create({
       mode: "subscription",
       line_items: [{ price: priceId, quantity: 1 }],
-      success_url: "https://www.faixabet.com.br/success.html",
+      success_url: "https://www.faixabet.com.br/success.html?session_id={CHECKOUT_SESSION_ID}",
       cancel_url: "https://www.faixabet.com.br/cancelado",
       client_reference_id: String(userId),
       customer_email: email,
@@ -194,22 +194,18 @@ app.post("/api/register-and-checkout", async (req, res) => {
   }
 });
 
-
-///
 // ------------------------
 // Rota: Confirmar pagamento (após Stripe) atualizado em 24/08
 // ------------------------
 // ------------------------
 // Rota: Confirmar pagamento Stripe
 // ------------------------
+
 app.get("/api/payment-success", async (req, res) => {
   const { session_id } = req.query;
-  if (!session_id) {
-    return res.status(400).json({ error: "session_id é obrigatório" });
-  }
+  if (!session_id) return res.status(400).json({ error: "session_id é obrigatório" });
 
   try {
-    // Recuperar sessão no Stripe
     const session = await stripe.checkout.sessions.retrieve(session_id);
 
     if (session.payment_status !== "paid") {
@@ -218,37 +214,42 @@ app.get("/api/payment-success", async (req, res) => {
 
     const userId = parseInt(session.client_reference_id, 10);
     const planoKey = session.metadata.plano;
-    const PLANOS = {
-      free: { id: 1 },
-      silver: { id: 2 },
-      gold: { id: 3 },
-    };
-
+    const PLANOS = { free: { id: 1 }, silver: { id: 2 }, gold: { id: 3 } };
     const planoId = PLANOS[planoKey]?.id || null;
-    if (!planoId) {
-      return res.status(400).json({ error: "Plano inválido em metadata" });
+    if (!planoId) return res.status(400).json({ error: "Plano inválido em metadata" });
+
+    // Obter valor e forma de pagamento
+    let valorReais = 0;
+    let formaPagamento = "stripe";
+
+    if (session.mode === "subscription" && session.invoice) {
+      const invoice = await stripe.invoices.retrieve(session.invoice);
+      valorReais = (invoice.amount_paid || invoice.total || 0) / 100;
+      if (invoice.payment_intent) {
+        const pi = await stripe.paymentIntents.retrieve(invoice.payment_intent);
+        formaPagamento = pi.payment_method_types?.[0] || "stripe";
+      }
+    } else if (session.payment_intent) {
+      const pi = await stripe.paymentIntents.retrieve(session.payment_intent);
+      valorReais = (pi.amount_received || pi.amount || 0) / 100;
+      formaPagamento = pi.payment_method_types?.[0] || "stripe";
     }
 
-    // 1) Inserir em client_plans
+    // client_plans
     await pool.query(
       `INSERT INTO client_plans (id_client, id_plano, data_inclusao, data_expira_plan, ativo)
        VALUES ($1, $2, now(), (now() + interval '30 days'), true)`,
       [userId, planoId]
     );
 
-    // 2) Inserir em financeiro
+    // financeiro
     await pool.query(
       `INSERT INTO financeiro (id_cliente, id_plano, data_pagamento, forma_pagamento, valor, data_validade)
        VALUES ($1, $2, now(), $3, $4, (now() + interval '30 days'))`,
-      [
-        userId,
-        planoId,
-        session.payment_method_types?.[0] || "stripe",
-        session.amount_total ? session.amount_total / 100 : 0.0, // converte de cents para reais
-      ]
+      [userId, planoId, formaPagamento, valorReais]
     );
 
-    // 3) Atualizar usuário para ativo no plano
+    // usuarios
     await pool.query(
       "UPDATE usuarios SET ativo = true, id_plano = $2 WHERE id = $1",
       [userId, planoId]
@@ -260,8 +261,6 @@ app.get("/api/payment-success", async (req, res) => {
     return res.status(500).json({ error: "Erro ao confirmar pagamento" });
   }
 });
-
-
 
 // ------------------------
 // Start
