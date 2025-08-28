@@ -201,9 +201,7 @@ app.post("/api/register-and-checkout", async (req, res) => {
 // ------------------------
 // Rota: Confirmar pagamento (após Stripe) atualizado em 24/08
 // ------------------------
-// ------------------------
-// Rota: Confirmar pagamento Stripe
-// ------------------------
+
 
 app.get("/api/payment-success", async (req, res) => {
   const { session_id } = req.query;
@@ -265,6 +263,44 @@ app.get("/api/payment-success", async (req, res) => {
     return res.status(500).json({ error: "Erro ao confirmar pagamento" });
   }
 });
+
+
+// ------------------------
+// Rota para pagamento via aplicação faixabet em 28/08
+// ------------------------
+
+app.post("/api/create-subscription-session", async (req, res) => {
+  const { user_id, plan } = req.body;
+
+  if (!user_id || !plan) {
+    return res.status(400).json({ error: "user_id e plan são obrigatórios" });
+  }
+
+  const PLANOS = {
+    silver: process.env.STRIPE_PRICE_SILVER,
+    gold: process.env.STRIPE_PRICE_GOLD,
+  };
+
+  const priceId = PLANOS[plan.toLowerCase()];
+  if (!priceId) return res.status(400).json({ error: "Plano inválido" });
+
+  try {
+    const session = await stripe.checkout.sessions.create({
+      mode: "subscription",
+      line_items: [{ price: priceId, quantity: 1 }],
+      success_url: "https://www.faixabet.com.br/success.html?session_id={CHECKOUT_SESSION_ID}",
+      cancel_url: "https://www.faixabet.com.br/cancelado",
+      client_reference_id: String(user_id),
+      metadata: { userId: String(user_id), plano: plan.toLowerCase() },
+    });
+
+    return res.json({ url: session.url });
+  } catch (err) {
+    console.error("Erro create-subscription-session:", err);
+    res.status(500).json({ error: "Erro ao criar sessão Stripe" });
+  }
+});
+
 
 // ------------------------
 // Start
