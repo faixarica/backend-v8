@@ -146,11 +146,15 @@ app.post('/api/check-email', async (req, res) => {
       gold:   { id_plano: 3, stripePrice: process.env.PRICE_GOLD },
     };
 
-    const planoKey = String(plan || "").toLowerCase();
+    let planoKey = String(plan || "").trim().toLowerCase();
+    
+    const aliases = { gratis: "free", gratuito: "free", prata: "silver", ouro: "gold" };
+    if (aliases[planoKey]) planoKey = aliases[planoKey];
+
     if (!(planoKey in PLANOS)) {
+      console.error("❌ Plano inválido recebido:", plan);
       return res.status(400).json({ error: "Plano inválido" });
     }
-
     try {
       // 1. Checar se email já existe
       const checkUser = await pool.query("SELECT id FROM usuarios WHERE email = $1", [email]);
