@@ -190,25 +190,28 @@ app.post('/api/check-email', async (req, res) => {
       }
 
       // 5. Plano Pago → criar sessão Stripe
+      // 5. Plano Pago → criar sessão Stripe
       const priceId = PLANOS[planoKey].stripePrice;
       if (!priceId) {
         return res.status(500).json({ error: `Price ID do plano ${planoKey} não configurado` });
       }
 
-    const session = await stripe.checkout.sessions.create({
-      mode: "subscription",
-      line_items: [{ price: priceId, quantity: 1 }],
-      success_url: "https://www.faixabet.com.br/success.html?session_id={CHECKOUT_SESSION_ID}",
-      cancel_url: "https://www.faixabet.com.br/cancelado",
-      client_reference_id: String(userId),
-      customer_email: email,
-      metadata: { userId: String(userId), plano: planoKey },
-    });
+      const session = await stripe.checkout.sessions.create({
+        mode: "subscription",
+        line_items: [{ price: priceId, quantity: 1 }],
+        success_url: "https://www.faixabet.com.br/success.html?session_id={CHECKOUT_SESSION_ID}",
+        cancel_url: "https://www.faixabet.com.br/cancelado",
+        client_reference_id: String(userId),
+        customer_email: email,
+        metadata: { userId: String(userId), plano: planoKey },
+      });
 
-    return res.json({ userId, sessionId: session.id });
+      // 🔑 Ajuste aqui
+      return res.json({ userId, checkoutUrl: session.url });
+
   } catch (err) {
     console.error("Erro no register-and-checkout:", err);
-return res.status(500).json({ error: err.message || "ErrOr interno no S ervidor" });
+  return res.status(500).json({ error: err.message || "ErrOr interno no S ervidor" });
 
   }
 });
@@ -216,8 +219,6 @@ return res.status(500).json({ error: err.message || "ErrOr interno no S ervidor"
 // ------------------------
 // Rota: Confirmar pagamento (após Stripe) atualizado em 24/08
 // ------------------------
-
-
 app.get("/api/payment-success", async (req, res) => {
   const { session_id } = req.query;
   if (!session_id) return res.status(400).json({ error: "session_id é obrigatório" });
