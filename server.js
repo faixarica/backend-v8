@@ -9,16 +9,38 @@ const bcrypt = require("bcryptjs");
 const { Pool } = require("pg");
 const Stripe = require("stripe");
 
-// ajste as variáveis de ambiente conforme necessário
+// ajuste as variáveis de ambiente conforme necessário
 //const STRIPE_SECRET = process.env.STRIPE_API_KEY;             // sk_...
 //const STRIPE_PUBLISHABLE = process.env.STRIPE_PUBLISHABLE_KEY; // pk_...
 //const stripe = new Stripe(STRIPE_SECRET, { apiVersion: "2024-06-20" });
 
 
+// novoa jsute para atender qq ambiente
+//const STRIPE_SECRET = process.env.STRIPE_SECRET_KEY;           // sk_...
+//const STRIPE_PUBLISHABLE = process.env.STRIPE_PUBLISHABLE_KEY; // pk_...
+//const stripe = new Stripe(STRIPE_SECRET, { apiVersion: "2024-06-20" });
 
-const STRIPE_SECRET = process.env.STRIPE_SECRET_KEY;           // sk_...
-const STRIPE_PUBLISHABLE = process.env.STRIPE_PUBLISHABLE_KEY; // pk_...
+const Stripe = require("stripe");
+
+// 03/09/20225
+// Definir ambiente
+const isProd = process.env.NODE_ENV === "production";
+
+// Chaves Stripe
+const STRIPE_SECRET = isProd
+  ? process.env.STRIPE_SECRET_KEY_LIVE
+  : process.env.STRIPE_SECRET_KEY_TEST;
+
+const STRIPE_PUBLIC = isProd
+  ? process.env.STRIPE_PUBLIC_KEY_LIVE
+  : process.env.STRIPE_PUBLIC_KEY_TEST;
+
+const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_ENDPOINT_SECRET;
+
+// Inicializa Stripe
 const stripe = new Stripe(STRIPE_SECRET, { apiVersion: "2024-06-20" });
+
+console.log("💳 Stripe rodando em:", isProd ? "🌎 PRODUÇÃO" : "🛠️ TESTE");
 
 
 const app = express();
