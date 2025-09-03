@@ -156,8 +156,8 @@ app.post('/api/check-email', async (req, res) => {
     // Mapeamento de plano (front → banco)
     const PLANOS = {
       free:   { id_plano: 1, stripePrice: null },
-      silver: { id_plano: 2, stripePrice: process.env.STRIPE_PRICE_SILVER },
-      gold:   { id_plano: 3, stripePrice: process.env.STRIPE_PRICE_GOLD },
+      silver: { id_plano: 2, stripePrice: process.env.PRICE_SILVER },
+      gold:   { id_plano: 3, stripePrice: process.env.PRICE_GOLD },
     };
 
     const planoKey = String(plan || "").toLowerCase();
@@ -305,8 +305,8 @@ app.post("/api/create-subscription-session", async (req, res) => {
   }
 
   const PLANOS = {
-    silver: process.env.STRIPE_PRICE_SILVER,
-    gold: process.env.STRIPE_PRICE_GOLD,
+    silver: process.env.PRICE_SILVER,
+    gold: process.env.PRICE_GOLD,
   };
 
   const priceId = PLANOS[plan.toLowerCase()];
