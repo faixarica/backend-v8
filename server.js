@@ -92,7 +92,7 @@ app.get("/api/health", async (req, res) => {
 // Rota: Public Key do Stripe (segura)
 // ------------------------
 app.get("/api/public-key", (req, res) => {
-  const publishableKey = process.env.STRIPE_PUBLISHABLE_KEY; // pk_test_... ou pk_live_...
+  const publishableKey = process.env.STRIPE_PUBLIC_KEY_LIVE; // pk_test_... ou pk_live_...
   if (!publishableKey) {
     console.error("❌ STRIPE_PUBLISHABLE_KEY não configurada no Render");
     return res.status(500).json({ error: "Stripe publishable key não configurada" });
