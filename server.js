@@ -146,7 +146,7 @@ app.post('/api/check-email', async (req, res) => {
       gold:   { id_plano: 3, stripePrice: process.env.PRICE_GOLD },
     };
 
-    let planoKey = String(plan || "").trim().toLowerCase();
+   let planoKey = String(plan || "").trim().toLowerCase();
     
     const aliases = { gratis: "free", gratuito: "free", prata: "silver", ouro: "gold" };
     if (aliases[planoKey]) planoKey = aliases[planoKey];
@@ -215,7 +215,7 @@ app.post('/api/check-email', async (req, res) => {
 
   } catch (err) {
     console.error("Erro no register-and-checkout:", err);
-  return res.status(500).json({ error: err.message || "ErrOr interno no S ervidor" });
+  return res.status(500).json({ error: err.message || "ErrOr interno no Servidor" });
 
   }
 });
