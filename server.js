@@ -9,9 +9,17 @@ const bcrypt = require("bcryptjs");
 const { Pool } = require("pg");
 const Stripe = require("stripe");
 
-const STRIPE_SECRET = process.env.STRIPE_API_KEY;             // sk_...
+// ajste as variáveis de ambiente conforme necessário
+//const STRIPE_SECRET = process.env.STRIPE_API_KEY;             // sk_...
+//const STRIPE_PUBLISHABLE = process.env.STRIPE_PUBLISHABLE_KEY; // pk_...
+//const stripe = new Stripe(STRIPE_SECRET, { apiVersion: "2024-06-20" });
+
+
+
+const STRIPE_SECRET = process.env.STRIPE_SECRET_KEY;           // sk_...
 const STRIPE_PUBLISHABLE = process.env.STRIPE_PUBLISHABLE_KEY; // pk_...
 const stripe = new Stripe(STRIPE_SECRET, { apiVersion: "2024-06-20" });
+
 
 const app = express();
 
@@ -47,8 +55,6 @@ app.use(cors({
   },
   credentials: true,
 }));
-
-
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -115,71 +121,71 @@ app.post('/api/check-email', async (req, res) => {
   }
 });
 
-// ------------------------
-// Rota: Registrar usuário + iniciar checkout
-// ------------------------
-app.post("/api/register-and-checkout", async (req, res) => {
-  const { full_name, username, birthdate, email, phone, password, plan } = req.body;
+  // ------------------------
+  // Rota: Registrar usuário + iniciar checkout
+  // ------------------------
+  app.post("/api/register-and-checkout", async (req, res) => {
+    const { full_name, username, birthdate, email, phone, password, plan } = req.body;
 
-  if (!full_name || !username || !email || !password || !plan) {
-    return res.status(400).json({ error: "Todos os campos são obrigatórios" });
-  }
-
-  // Mapeamento de plano (front → banco)
-  const PLANOS = {
-    free:   { id_plano: 1, stripePrice: null },
-    silver: { id_plano: 2, stripePrice: process.env.STRIPE_PRICE_SILVER },
-    gold:   { id_plano: 3, stripePrice: process.env.STRIPE_PRICE_GOLD },
-  };
-
-  const planoKey = String(plan || "").toLowerCase();
-  if (!(planoKey in PLANOS)) {
-    return res.status(400).json({ error: "Plano inválido" });
-  }
-
-  try {
-    // 1. Checar se email já existe
-    const checkUser = await pool.query("SELECT id FROM usuarios WHERE email = $1", [email]);
-    if (checkUser.rows.length > 0) {
-      return res.status(400).json({ error: "Email já cadastrado" });
+    if (!full_name || !username || !email || !password || !plan) {
+      return res.status(400).json({ error: "Todos os campos são obrigatórios" });
     }
 
-    // 2. Criar hash da senha
-    const hashedPassword = await bcrypt.hash(password, 10);
+    // Mapeamento de plano (front → banco)
+    const PLANOS = {
+      free:   { id_plano: 1, stripePrice: null },
+      silver: { id_plano: 2, stripePrice: process.env.STRIPE_PRICE_SILVER },
+      gold:   { id_plano: 3, stripePrice: process.env.STRIPE_PRICE_GOLD },
+    };
 
-    // 3. Inserir usuário na tabela `usuarios`
-    const insertUser = await pool.query(
-      `INSERT INTO usuarios 
-        (nome_completo, usuario, data_nascimento, email, telefone, senha, id_plano, ativo) 
-       VALUES ($1,$2,$3,$4,$5,$6,$7,true) 
-       RETURNING id`,
-      [full_name, username, birthdate, email, phone, hashedPassword, PLANOS[planoKey].id_plano]
-    );
+    const planoKey = String(plan || "").toLowerCase();
+    if (!(planoKey in PLANOS)) {
+      return res.status(400).json({ error: "Plano inválido" });
+    }
 
-    const userId = insertUser.rows[0].id;
+    try {
+      // 1. Checar se email já existe
+      const checkUser = await pool.query("SELECT id FROM usuarios WHERE email = $1", [email]);
+      if (checkUser.rows.length > 0) {
+        return res.status(400).json({ error: "Email já cadastrado" });
+      }
 
-    // 4. Se for plano Free → já grava client_plans e financeiro
-    if (planoKey === "free") {
-      await pool.query(
-        `INSERT INTO client_plans (id_client, id_plano, data_inclusao, data_expira_plan, ativo)
-         VALUES ($1, $2, now(), (now() + interval '30 days'), true)`,
-        [userId, PLANOS[planoKey].id_plano]
+      // 2. Criar hash da senha
+      const hashedPassword = await bcrypt.hash(password, 10);
+
+      // 3. Inserir usuário na tabela `usuarios`
+      const insertUser = await pool.query(
+        `INSERT INTO usuarios 
+          (nome_completo, usuario, data_nascimento, email, telefone, senha, id_plano, ativo) 
+        VALUES ($1,$2,$3,$4,$5,$6,$7,true) 
+        RETURNING id`,
+        [full_name, username, birthdate, email, phone, hashedPassword, PLANOS[planoKey].id_plano]
       );
 
-      await pool.query(
-        `INSERT INTO financeiro (id_cliente, id_plano, data_pagamento, forma_pagamento, valor, data_validade)
-         VALUES ($1, $2, now(), $3, $4, (now() + interval '30 days'))`,
-        [userId, PLANOS[planoKey].id_plano, "free", 0.0]
-      );
+      const userId = insertUser.rows[0].id;
 
-      return res.json({ userId });
-    }
+      // 4. Se for plano Free → já grava client_plans e financeiro
+      if (planoKey === "free") {
+        await pool.query(
+          `INSERT INTO client_plans (id_client, id_plano, data_inclusao, data_expira_plan, ativo)
+          VALUES ($1, $2, now(), (now() + interval '30 days'), true)`,
+          [userId, PLANOS[planoKey].id_plano]
+        );
 
-    // 5. Plano Pago → criar sessão Stripe
-    const priceId = PLANOS[planoKey].stripePrice;
-    if (!priceId) {
-      return res.status(500).json({ error: `Price ID do plano ${planoKey} não configurado` });
-    }
+        await pool.query(
+          `INSERT INTO financeiro (id_cliente, id_plano, data_pagamento, forma_pagamento, valor, data_validade)
+          VALUES ($1, $2, now(), $3, $4, (now() + interval '30 days'))`,
+          [userId, PLANOS[planoKey].id_plano, "free", 0.0]
+        );
+
+        return res.json({ userId });
+      }
+
+      // 5. Plano Pago → criar sessão Stripe
+      const priceId = PLANOS[planoKey].stripePrice;
+      if (!priceId) {
+        return res.status(500).json({ error: `Price ID do plano ${planoKey} não configurado` });
+      }
 
     const session = await stripe.checkout.sessions.create({
       mode: "subscription",
