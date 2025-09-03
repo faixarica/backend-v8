@@ -208,7 +208,7 @@ app.post('/api/check-email', async (req, res) => {
     return res.json({ userId, sessionId: session.id });
   } catch (err) {
     console.error("Erro no register-and-checkout:", err);
-    return res.status(500).json({ error: "Erro interno no servidor" });
+    return res.status(500).json({ error: "Erro interno no ServidoR" });
   }
 });
 
