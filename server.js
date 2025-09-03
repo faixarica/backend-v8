@@ -9,20 +9,6 @@ const bcrypt = require("bcryptjs");
 const { Pool } = require("pg");
 const Stripe = require("stripe");
 
-// ajuste as variáveis de ambiente conforme necessário
-//const STRIPE_SECRET = process.env.STRIPE_API_KEY;             // sk_...
-//const STRIPE_PUBLISHABLE = process.env.STRIPE_PUBLISHABLE_KEY; // pk_...
-//const stripe = new Stripe(STRIPE_SECRET, { apiVersion: "2024-06-20" });
-
-
-// novoa jsute para atender qq ambiente
-//const STRIPE_SECRET = process.env.STRIPE_SECRET_KEY;           // sk_...
-//const STRIPE_PUBLISHABLE = process.env.STRIPE_PUBLISHABLE_KEY; // pk_...
-//const stripe = new Stripe(STRIPE_SECRET, { apiVersion: "2024-06-20" });
-
-const Stripe = require("stripe");
-
-// 03/09/20225
 // Definir ambiente
 const isProd = process.env.NODE_ENV === "production";
 
