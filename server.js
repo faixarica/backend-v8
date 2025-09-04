@@ -114,8 +114,8 @@ app.post("/api/change-plan", async (req, res) => {
     // Mapear planos do Stripe (use os mesmos priceId da sua config)
     const priceMap = {
       free: null,
-      silver: process.env.STRIPE_PRICE_SILVER,
-      gold: process.env.STRIPE_PRICE_GOLD,
+      silver: process.env.PRICE_SILVER,
+      gold: process.env.PRICE_GOLD,
     };
 
     const priceId = priceMap[plan.toLowerCase()];
