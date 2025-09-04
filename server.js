@@ -100,12 +100,53 @@ app.get("/api/public-key", (req, res) => {
   res.json({ publishableKey });
 });
 
-
-/////
-// ------------------------
-// Rota: Checar email
-// ------------------------
 // ========================
+// Troca de plano existente
+// ========================
+app.post("/api/change-plan", async (req, res) => {
+  try {
+    const { user_id, plan, email, full_name, username } = req.body;
+
+    if (!user_id || !plan) {
+      return res.status(400).json({ error: "user_id e plan são obrigatórios." });
+    }
+
+    // Mapear planos do Stripe (use os mesmos priceId da sua config)
+    const priceMap = {
+      free: null,
+      silver: process.env.STRIPE_PRICE_SILVER,
+      gold: process.env.STRIPE_PRICE_GOLD,
+    };
+
+    const priceId = priceMap[plan.toLowerCase()];
+    if (!priceId) {
+      return res.status(400).json({ error: "Plano inválido." });
+    }
+
+    // Criar sessão de checkout
+    const session = await stripe.checkout.sessions.create({
+      mode: "subscription",
+      customer_email: email,
+      line_items: [{ price: priceId, quantity: 1 }],
+      success_url: `https://www.faixabet.com.br/success.html?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `https://www.faixabet.com.br/cancelado`,
+      client_reference_id: user_id,
+      metadata: {
+        user_id,
+        plan,
+        username,
+        full_name,
+      },
+    });
+
+    return res.json({ checkoutUrl: session.url });
+  } catch (err) {
+    console.error("Erro em /api/change-plan:", err);
+    return res.status(500).json({ error: "Erro ao trocar de plano." });
+  }
+});
+
+
 // POST /check-email
 // ========================
 app.post('/api/check-email', async (req, res) => {
