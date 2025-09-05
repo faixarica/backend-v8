@@ -30,15 +30,18 @@ console.log("💳 Stripe rodando em:", isProd ? "🌎 PRODUÇÃO" : "🛠️ TES
 
 const crypto = require("crypto");
 
-      function hashPasswordPBKDF2(password) {
-        const iterations = 260000; // padrão Django/Passlib
-        const salt = crypto.randomBytes(16).toString("hex");
-        const hash = crypto
-          .pbkdf2Sync(password, salt, iterations, 32, "sha256")
-          .toString("base64");
-        return `pbkdf2_sha256$${iterations}$${salt}$${hash}`;
-      }
-      
+function hashPasswordPBKDF2(password) {
+  const iterations = 260000;
+  const salt = crypto.randomBytes(16).toString("hex");
+  const hash = crypto.pbkdf2Sync(password, salt, iterations, 32, "sha256");
+  
+  // base64 "sem padding" para ficar compatível com passlib
+  const hashB64 = hash.toString("base64").replace(/=+$/, "");
+
+  return `pbkdf2_sha256$${iterations}$${salt}$${hashB64}`;
+}
+
+
 const app = express();
 
 // ------------------------
@@ -180,53 +183,53 @@ app.post('/api/check-email', async (req, res) => {
   }
 });
 
-  // ------------------------
-  // Rota: Registrar usuário + iniciar checkout
-  // ------------------------
-  app.post("/api/register-and-checkout", async (req, res) => {
-    const { full_name, username, birthdate, email, phone, password, plan } = req.body;
+    // ------------------------
+    // Rota: Registrar usuário + iniciar checkout
+    // ------------------------
+    app.post("/api/register-and-checkout", async (req, res) => {
+      const { full_name, username, birthdate, email, phone, password, plan } = req.body;
 
-    if (!full_name || !username || !email || !password || !plan) {
-      return res.status(400).json({ error: "Todos os campos são obrigatórios" });
-    }
-
-    // Mapeamento de plano (front → banco)
-    const PLANOS = {
-      free:   { id_plano: 1, stripePrice: null },
-      silver: { id_plano: 2, stripePrice: process.env.PRICE_SILVER },
-      gold:   { id_plano: 3, stripePrice: process.env.PRICE_GOLD },
-    };
-
-   let planoKey = String(plan || "").trim().toLowerCase();
-    
-    const aliases = { gratis: "free", gratuito: "free", prata: "silver", ouro: "gold" };
-    if (aliases[planoKey]) planoKey = aliases[planoKey];
-
-    if (!(planoKey in PLANOS)) {
-      console.error("❌ Plano inválido recebido:", plan);
-      return res.status(400).json({ error: "Plano inválido" });
-    }
-    try {
-      // 1. Checar se email já existe
-      const checkUser = await pool.query("SELECT id FROM usuarios WHERE email = $1", [email]);
-      if (checkUser.rows.length > 0) {
-        return res.status(400).json({ error: "Email já cadastrado" });
+      if (!full_name || !username || !email || !password || !plan) {
+        return res.status(400).json({ error: "Todos os campos são obrigatórios" });
       }
 
-      // 2. Criar hash da senha !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-      //const hashedPassword = await bcrypt.hash(password, 10);
-      const hashedPassword = hashPasswordPBKDF2(password);
+      // Mapeamento de plano (front → banco)
+      const PLANOS = {
+        free:   { id_plano: 1, stripePrice: null },
+        silver: { id_plano: 2, stripePrice: process.env.PRICE_SILVER },
+        gold:   { id_plano: 3, stripePrice: process.env.PRICE_GOLD },
+      };
 
-            // 3. Inserir usuário na tabela `usuarios`
-      const insertUser = await pool.query(
-        `INSERT INTO usuarios 
-          (nome_completo, usuario, data_nascimento, email, telefone, senha, id_plano, ativo) 
-        VALUES ($1,$2,$3,$4,$5,$6,$7,true) 
-        RETURNING id`,
-        [full_name, username, birthdate, email, phone, hashedPassword, PLANOS[planoKey].id_plano]
-      );
+    let planoKey = String(plan || "").trim().toLowerCase();
+      
+      const aliases = { gratis: "free", gratuito: "free", prata: "silver", ouro: "gold" };
+      if (aliases[planoKey]) planoKey = aliases[planoKey];
 
-      const userId = insertUser.rows[0].id;
+      if (!(planoKey in PLANOS)) {
+        console.error("❌ Plano inválido recebido:", plan);
+        return res.status(400).json({ error: "Plano inválido" });
+      }
+      try {
+        // 1. Checar se email já existe
+        const checkUser = await pool.query("SELECT id FROM usuarios WHERE email = $1", [email]);
+        if (checkUser.rows.length > 0) {
+          return res.status(400).json({ error: "Email já cadastrado" });
+        }
+
+        // 2. Criar hash da senha !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        //const hashedPassword = await bcrypt.hash(password, 10);
+        const hashedPassword = hashPasswordPBKDF2(password);
+
+              // 3. Inserir usuário na tabela `usuarios`
+        const insertUser = await pool.query(
+          `INSERT INTO usuarios 
+            (nome_completo, usuario, data_nascimento, email, telefone, senha, id_plano, ativo) 
+          VALUES ($1,$2,$3,$4,$5,$6,$7,true) 
+          RETURNING id`,
+          [full_name, username, birthdate, email, phone, hashedPassword, PLANOS[planoKey].id_plano]
+        );
+
+        const userId = insertUser.rows[0].id;
 
       // 4. Se for plano Free → já grava client_plans e financeiro
       if (planoKey === "free") {
