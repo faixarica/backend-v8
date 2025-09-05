@@ -203,8 +203,21 @@ app.post('/api/check-email', async (req, res) => {
         return res.status(400).json({ error: "Email já cadastrado" });
       }
 
-      // 2. Criar hash da senha
-      const hashedPassword = await bcrypt.hash(password, 10);
+      // 2. Criar hash da senha !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+      //const hashedPassword = await bcrypt.hash(password, 10);
+      const hashedPassword = hashPasswordPBKDF2(password);
+
+      const crypto = require("crypto");
+
+      function hashPasswordPBKDF2(password) {
+        const iterations = 260000; // padrão Django/Passlib
+        const salt = crypto.randomBytes(16).toString("hex");
+        const hash = crypto
+          .pbkdf2Sync(password, salt, iterations, 32, "sha256")
+          .toString("base64");
+        return `pbkdf2_sha256$${iterations}$${salt}$${hash}`;
+      }
+
 
       // 3. Inserir usuário na tabela `usuarios`
       const insertUser = await pool.query(
