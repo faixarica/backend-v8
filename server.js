@@ -32,14 +32,16 @@ const crypto = require("crypto");
 
 function hashPasswordPBKDF2(password) {
   const iterations = 260000;
-  const salt = crypto.randomBytes(16).toString("hex");
-  const hash = crypto.pbkdf2Sync(password, salt, iterations, 32, "sha256");
-  
-  // base64 "sem padding" para ficar compatível com passlib
-  const hashB64 = hash.toString("base64").replace(/=+$/, "");
+  const saltBytes = crypto.randomBytes(16);               // 16 bytes reais
+  const derived = crypto.pbkdf2Sync(password, saltBytes, iterations, 32, "sha256");
 
-  return `pbkdf2_sha256$${iterations}$${salt}$${hashB64}`;
+  // encode base64 sem padding (compatível com passlib)
+  const saltB64 = saltBytes.toString("base64").replace(/=+$/, "");
+  const hashB64 = derived.toString("base64").replace(/=+$/, "");
+
+  return `pbkdf2_sha256$${iterations}$${saltB64}$${hashB64}`;
 }
+
 
 
 const app = express();
