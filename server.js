@@ -28,7 +28,17 @@ const stripe = new Stripe(STRIPE_SECRET, { apiVersion: "2024-06-20" });
 
 console.log("💳 Stripe rodando em:", isProd ? "🌎 PRODUÇÃO" : "🛠️ TESTE");
 
+const crypto = require("crypto");
 
+      function hashPasswordPBKDF2(password) {
+        const iterations = 260000; // padrão Django/Passlib
+        const salt = crypto.randomBytes(16).toString("hex");
+        const hash = crypto
+          .pbkdf2Sync(password, salt, iterations, 32, "sha256")
+          .toString("base64");
+        return `pbkdf2_sha256$${iterations}$${salt}$${hash}`;
+      }
+      
 const app = express();
 
 // ------------------------
@@ -207,19 +217,7 @@ app.post('/api/check-email', async (req, res) => {
       //const hashedPassword = await bcrypt.hash(password, 10);
       const hashedPassword = hashPasswordPBKDF2(password);
 
-      const crypto = require("crypto");
-
-      function hashPasswordPBKDF2(password) {
-        const iterations = 260000; // padrão Django/Passlib
-        const salt = crypto.randomBytes(16).toString("hex");
-        const hash = crypto
-          .pbkdf2Sync(password, salt, iterations, 32, "sha256")
-          .toString("base64");
-        return `pbkdf2_sha256$${iterations}$${salt}$${hash}`;
-      }
-
-
-      // 3. Inserir usuário na tabela `usuarios`
+            // 3. Inserir usuário na tabela `usuarios`
       const insertUser = await pool.query(
         `INSERT INTO usuarios 
           (nome_completo, usuario, data_nascimento, email, telefone, senha, id_plano, ativo) 
