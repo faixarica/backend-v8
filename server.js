@@ -139,6 +139,7 @@ app.post("/api/change-plan", async (req, res) => {
       free: null,
       silver: process.env.PRICE_SILVER,
       gold: process.env.PRICE_GOLD,
+      platinum: process.env.PRICE_PLATINUM, // 🆕 adicionado
     };
 
     const priceId = priceMap[plan.toLowerCase()];
@@ -171,7 +172,7 @@ app.post("/api/change-plan", async (req, res) => {
 
 
 // POST /check-email
-// ========================
+
 app.post('/api/check-email', async (req, res) => {
   const { email } = req.body;
 
@@ -193,100 +194,101 @@ app.post('/api/check-email', async (req, res) => {
   }
 });
 
-    // ------------------------
-    // Rota: Registrar usuário + iniciar checkout
-    // ------------------------
-    app.post("/api/register-and-checkout", async (req, res) => {
-      const { full_name, username, birthdate, email, phone, password, plan } = req.body;
+// ------------------------
+// Rota: Registrar usuário + iniciar checkout
+// ------------------------
+app.post("/api/register-and-checkout", async (req, res) => {
+  const { full_name, username, birthdate, email, phone, password, plan } = req.body;
 
-      if (!full_name || !username || !email || !password || !plan) {
-        return res.status(400).json({ error: "Todos os campos são obrigatórios" });
-      }
+  if (!full_name || !username || !email || !password || !plan) {
+    return res.status(400).json({ error: "Todos os campos são obrigatórios" });
+  }
 
-      // Mapeamento de plano (front → banco)
-      const PLANOS = {
-        free:   { id_plano: 1, stripePrice: null },
-        silver: { id_plano: 2, stripePrice: process.env.PRICE_SILVER },
-        gold:   { id_plano: 3, stripePrice: process.env.PRICE_GOLD },
-      };
+  // 🆕 Inclui Platinum no mapeamento
+  const PLANOS = {
+    free: { id_plano: 1, stripePrice: null },
+    silver: { id_plano: 2, stripePrice: process.env.PRICE_SILVER },
+    gold: { id_plano: 3, stripePrice: process.env.PRICE_GOLD },
+    platinum: { id_plano: 4, stripePrice: process.env.PRICE_PLATINUM },
+  };
 
-    let planoKey = String(plan || "").trim().toLowerCase();
-      
-      const aliases = { gratis: "free", gratuito: "free", prata: "silver", ouro: "gold" };
-      if (aliases[planoKey]) planoKey = aliases[planoKey];
+  // Normaliza a chave do plano
+  let planoKey = String(plan || "").trim().toLowerCase();
+  const aliases = { gratis: "free", gratuito: "free", prata: "silver", ouro: "gold", platina: "platinum" };
+  if (aliases[planoKey]) planoKey = aliases[planoKey];
 
-      if (!(planoKey in PLANOS)) {
-        console.error("❌ Plano inválido recebido:", plan);
-        return res.status(400).json({ error: "Plano inválido" });
-      }
-      try {
-        // 1. Checar se email já existe
-        const checkUser = await pool.query("SELECT id FROM usuarios WHERE email = $1", [email]);
-        if (checkUser.rows.length > 0) {
-          return res.status(400).json({ error: "Email já cadastrado" });
-        }
+  if (!(planoKey in PLANOS)) {
+    console.error("❌ Plano inválido recebido:", plan);
+    return res.status(400).json({ error: "Plano inválido" });
+  }
 
-        // 2. Criar hash da senha !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-        //const hashedPassword = await bcrypt.hash(password, 10);
-        const hashedPassword = hashPasswordPBKDF2(password);
+  try {
+    // 1️⃣ Checar se email já existe
+    const checkUser = await pool.query("SELECT id FROM usuarios WHERE email = $1", [email]);
+    if (checkUser.rows.length > 0) {
+      return res.status(400).json({ error: "Email já cadastrado" });
+    }
 
-              // 3. Inserir usuário na tabela `usuarios`
-        const insertUser = await pool.query(
-          `INSERT INTO usuarios 
-            (nome_completo, usuario, data_nascimento, email, telefone, senha, id_plano, ativo) 
-          VALUES ($1,$2,$3,$4,$5,$6,$7,true) 
-          RETURNING id`,
-          [full_name, username, birthdate, email, phone, hashedPassword, PLANOS[planoKey].id_plano]
-        );
+    // 2️⃣ Criar hash da senha
+   // const hashedPassword = hashPasswordPBKDF2(password);
 
-        const userId = insertUser.rows[0].id;
+    // 2️⃣ Criar hash da senha (PADRÃO)
+    const hashedPassword = await bcrypt.hash(password, 12);
 
-      // 4. Se for plano Free → já grava client_plans e financeiro
-      if (planoKey === "free") {
-        await pool.query(
-          `INSERT INTO client_plans (id_client, id_plano, data_inclusao, data_expira_plan, ativo)
-          VALUES ($1, $2, now(), (now() + interval '30 days'), true)`,
-          [userId, PLANOS[planoKey].id_plano]
-        );
 
-        await pool.query(
-          `INSERT INTO financeiro (id_cliente, id_plano, data_pagamento, forma_pagamento, valor, data_validade)
-          VALUES ($1, $2, now(), $3, $4, (now() + interval '30 days'))`,
-          [userId, PLANOS[planoKey].id_plano, "free", 0.0]
-        );
+    // 3️⃣ Inserir usuário
+    const insertUser = await pool.query(
+      `INSERT INTO usuarios 
+        (nome_completo, usuario, data_nascimento, email, telefone, senha, id_plano, ativo) 
+       VALUES ($1,$2,$3,$4,$5,$6,$7,true) 
+       RETURNING id`,
+      [full_name, username, birthdate, email, phone, hashedPassword, PLANOS[planoKey].id_plano]
+    );
 
-        return res.json({ userId });
-      }
+    const userId = insertUser.rows[0].id;
 
-      // 5. Plano Pago → criar sessão Stripe
-      // 5. Plano Pago → criar sessão Stripe
-      const priceId = PLANOS[planoKey].stripePrice;
-      if (!priceId) {
-        return res.status(500).json({ error: `Price ID do plano ${planoKey} não configurado` });
-      }
+    // 4️⃣ Se for plano Free → grava client_plans e financeiro
+    if (planoKey === "free") {
+      await pool.query(
+        `INSERT INTO client_plans (id_client, id_plano, data_inclusao, data_expira_plan, ativo)
+         VALUES ($1, $2, now(), (now() + interval '30 days'), true)`,
+        [userId, PLANOS[planoKey].id_plano]
+      );
 
-      const session = await stripe.checkout.sessions.create({
-        mode: "subscription",
-        line_items: [{ price: priceId, quantity: 1 }],
-        success_url: "https://www.faixabet.com.br/success.html?session_id={CHECKOUT_SESSION_ID}",
-        cancel_url: "https://www.faixabet.com.br/cancelado",
-        client_reference_id: String(userId),
-        customer_email: email,
-        metadata: { userId: String(userId), plano: planoKey },
-      });
+      await pool.query(
+        `INSERT INTO financeiro (id_cliente, id_plano, data_pagamento, forma_pagamento, valor, data_validade)
+         VALUES ($1, $2, now(), $3, $4, (now() + interval '30 days'))`,
+        [userId, PLANOS[planoKey].id_plano, "free", 0.0]
+      );
 
-      // 🔑 Ajuste aqui
-      return res.json({ userId, checkoutUrl: session.url });
+      return res.json({ userId });
+    }
 
+    // 5️⃣ Plano Pago → criar sessão Stripe
+    const priceId = PLANOS[planoKey].stripePrice;
+    if (!priceId) {
+      return res.status(500).json({ error: `Price ID do plano ${planoKey} não configurado` });
+    }
+
+    const session = await stripe.checkout.sessions.create({
+      mode: "subscription",
+      line_items: [{ price: priceId, quantity: 1 }],
+      success_url: "https://www.faixabet.com.br/success.html?session_id={CHECKOUT_SESSION_ID}",
+      cancel_url: "https://www.faixabet.com.br/cancelado",
+      client_reference_id: String(userId),
+      customer_email: email,
+      metadata: { userId: String(userId), plano: planoKey },
+    });
+
+    return res.json({ userId, checkoutUrl: session.url });
   } catch (err) {
     console.error("Erro no register-and-checkout:", err);
-  return res.status(500).json({ error: err.message || "ErrOr interno no Servidor" });
-
+    return res.status(500).json({ error: err.message || "Erro interno no servidor" });
   }
 });
 
 // ------------------------
-// Rota: Confirmar pagamento (após Stripe) atualizado em 24/08
+// Rota: Confirmar pagamento (após Stripe)
 // ------------------------
 app.get("/api/payment-success", async (req, res) => {
   const { session_id } = req.query;
@@ -301,9 +303,19 @@ app.get("/api/payment-success", async (req, res) => {
 
     const userId = parseInt(session.client_reference_id, 10);
     const planoKey = session.metadata.plano;
-    const PLANOS = { free: { id: 1 }, silver: { id: 2 }, gold: { id: 3 } };
+
+    // 🆕 Adicionado plano Platinum
+    const PLANOS = { 
+      free: { id: 1 }, 
+      silver: { id: 2 }, 
+      gold: { id: 3 }, 
+      platinum: { id: 4 } 
+    };
+
     const planoId = PLANOS[planoKey]?.id || null;
-    if (!planoId) return res.status(400).json({ error: "Plano inválido em metadata" });
+    if (!planoId) {
+      return res.status(400).json({ error: "Plano inválido em metadata" });
+    }
 
     // Obter valor e forma de pagamento
     let valorReais = 0;
@@ -336,7 +348,7 @@ app.get("/api/payment-success", async (req, res) => {
       [userId, planoId, formaPagamento, valorReais]
     );
 
-    // usuarios
+    // usuarios (mantido sem alterações)
     await pool.query(
       "UPDATE usuarios SET ativo = true, id_plano = $2 WHERE id = $1",
       [userId, planoId]
@@ -348,7 +360,6 @@ app.get("/api/payment-success", async (req, res) => {
     return res.status(500).json({ error: "Erro ao confirmar pagamento" });
   }
 });
-
 
 // ------------------------
 // Rota para pagamento via aplicação faixabet em 28/08
@@ -364,6 +375,7 @@ app.post("/api/create-subscription-session", async (req, res) => {
   const PLANOS = {
     silver: process.env.PRICE_SILVER,
     gold: process.env.PRICE_GOLD,
+    platinum: process.env.PRICE_PLATINUM
   };
 
   const priceId = PLANOS[plan.toLowerCase()];
@@ -386,6 +398,77 @@ app.post("/api/create-subscription-session", async (req, res) => {
   }
 });
 
+// ==========================================
+// ROTA: Configurar envio automático de palpites
+// POST /api/auto-palpites/configurar
+// ==========================================
+app.post("/api/auto-palpites/configurar", async (req, res) => {
+  try {
+    const {
+      user_id,
+      ativo,
+      qtd_lotofacil,
+      qtd_megasena,
+      dias_semana,      // string "1,3,5"
+      horario_envio,    // "09:00:00"
+      canal             // "email" | "whatsapp" | "ambos"
+    } = req.body;
+
+    // --------------------------
+    // Validação simples
+    // --------------------------
+    if (!user_id) {
+      return res.status(400).json({ error: "user_id é obrigatório" });
+    }
+
+    const canaisValidos = ["email", "whatsapp", "ambos"];
+    if (!canaisValidos.includes(canal)) {
+      return res.status(400).json({ error: "Canal inválido" });
+    }
+
+    // --------------------------
+    // UPSERT (insert ou update)
+    // --------------------------
+    const query = `
+      INSERT INTO user_auto_palpites (
+        user_id, ativo, qtd_lotofacil, qtd_megasena,
+        dias_semana, horario_envio, canal, atualizado_em
+      )
+      VALUES ($1,$2,$3,$4,$5,$6,$7, NOW())
+      ON CONFLICT (user_id)
+      DO UPDATE SET
+        ativo = EXCLUDED.ativo,
+        qtd_lotofacil = EXCLUDED.qtd_lotofacil,
+        qtd_megasena = EXCLUDED.qtd_megasena,
+        dias_semana = EXCLUDED.dias_semana,
+        horario_envio = EXCLUDED.horario_envio,
+        canal = EXCLUDED.canal,
+        atualizado_em = NOW()
+      RETURNING *;
+    `;
+
+    const values = [
+      user_id,
+      ativo ?? false,
+      qtd_lotofacil ?? 0,
+      qtd_megasena ?? 0,
+      dias_semana ?? "1,3,5",
+      horario_envio ?? "09:00:00",
+      canal
+    ];
+
+    const result = await pool.query(query, values);
+
+    return res.json({
+      success: true,
+      config: result.rows[0],
+    });
+
+  } catch (err) {
+    console.error("Erro em /api/auto-palpites/configurar:", err);
+    return res.status(500).json({ error: "Erro ao salvar configurações" });
+  }
+});
 
 // ------------------------
 // Start
